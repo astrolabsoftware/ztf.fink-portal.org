@@ -69,6 +69,7 @@ fink_classes = [
     # Fink derived classes
     "Early SN Ia candidate",
     "SN candidate",
+    "SLSN candidate",
     "Kilonova candidate",
     "Microlensing candidate",
     "Solar System MPC",

@@ -51,6 +51,7 @@ simbad_types = sorted(simbad_types, key=lambda s: s.lower())
 class_colors = {
     "Early SN Ia candidate": "red",
     "SN candidate": "orange",
+    "SLSN candidate": "grape",
     "Kilonova candidate": "dark",
     "Microlensing candidate": "lime",
     "Tracklet": "violet",
