@@ -154,9 +154,11 @@ def add_classification(spark, df, path_to_tns):
         sub_pdf["TNS"][sep_constraint2] = type2.to_numpy()[idx2[sep_constraint2]]
 
         to_return = objectid.apply(
-            lambda x: "Unknown"
-            if x not in sub_pdf["objectId"].to_numpy()
-            else sub_pdf["TNS"][sub_pdf["objectId"] == x].to_numpy()[0]
+            lambda x: (
+                "Unknown"
+                if x not in sub_pdf["objectId"].to_numpy()
+                else sub_pdf["TNS"][sub_pdf["objectId"] == x].to_numpy()[0]
+            )
         )
 
         return to_return
@@ -329,7 +331,10 @@ def perform_xmatch(spark, df, catalog_filename, ra_col, dec_col, id_col, radius_
             dec=np.array(dec2, dtype=np.float) * u.degree,
         )
 
-        if isinstance(radius_arcsec, dict) and radius_arcsec["value"] in pdf_cat.columns:
+        if (
+            isinstance(radius_arcsec, dict)
+            and radius_arcsec["value"] in pdf_cat.columns
+        ):
             radius_col = pdf_cat[radius_arcsec["value"]]
         elif isinstance(radius_arcsec, float) or isinstance(radius_arcsec, int):
             radius_col = pd.Series([radius_arcsec])
