@@ -300,7 +300,7 @@ def generate_spark_paths(startDate, stopDate, basePath):
 
 
 def perform_xmatch(spark, df, catalog_filename, ra_col, dec_col, id_col, radius_arcsec):
-    """ """
+    """"""
     df_other = spark.read.format("parquet").load(catalog_filename)
     pdf_other = df_other.toPandas()
     pdf_b = spark.sparkContext.broadcast(pdf_other)
