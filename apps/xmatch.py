@@ -304,7 +304,8 @@ def update_code_block(topic_name):
 fink_datatransfer \\
     -topic {topic_name} \\
     -outdir {topic_name} \\
-    --verbose
+    --verbose \\
+    --survey ztf
         """
         return code_block
 
