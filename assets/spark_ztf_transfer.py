@@ -157,9 +157,11 @@ def add_classification(spark, df, path_to_tns):
         sub_pdf["TNS"][sep_constraint2] = type2.to_numpy()[idx2[sep_constraint2]]
 
         to_return = objectid.apply(
-            lambda x: "Unknown"
-            if x not in sub_pdf["objectId"].to_numpy()
-            else sub_pdf["TNS"][sub_pdf["objectId"] == x].to_numpy()[0]
+            lambda x: (
+                "Unknown"
+                if x not in sub_pdf["objectId"].to_numpy()
+                else sub_pdf["TNS"][sub_pdf["objectId"] == x].to_numpy()[0]
+            )
         )
 
         return to_return
