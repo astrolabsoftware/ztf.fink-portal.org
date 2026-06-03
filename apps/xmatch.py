@@ -255,6 +255,9 @@ def filter_content_tab():
                 description="Select all Fink/ZTF fields you would like to be added.",
                 placeholder="start typing...",
                 id="field_select_xmatch",
+                data=format_field_for_data_transfer(
+                    "ZTF", with_predefined_options=False, cutouts_allowed=False
+                ),
                 searchable=True,
                 clearable=True,
             ),
@@ -305,7 +308,7 @@ fink_datatransfer \\
     -topic {topic_name} \\
     -outdir {topic_name} \\
     --verbose \\
-    --survey ztf
+    -survey ztf
         """
         return code_block
 
@@ -320,15 +323,12 @@ fink_datatransfer \\
         Input("radius-switch", "checked"),
     ],
     [
-        State("trans_datasource_xmatch", "value"),
         State("object-catalog", "data"),
         State("upload-data", "filename"),
         State("ra-column", "value"),
         State("dec-column", "value"),
         State("store-radius-number", "data"),
         State("store-radius-column", "data"),
-        # State("radius-xmatch", "value"),
-        # State("radius-column", "value"),
         State("id-column", "value"),
         State("date-range-picker-xmatch", "value"),
         State("field_select_xmatch", "value"),
@@ -338,7 +338,6 @@ fink_datatransfer \\
 def submit_job(
     n_clicks,
     radius_switch,
-    trans_datasource,
     catalog,
     catalog_filename,
     ra,
@@ -354,10 +353,9 @@ def submit_job(
         # define unique topic name
         d = datetime.datetime.utcnow()
 
-        if trans_datasource == "ZTF":
-            topic_name = f"fxmatch_ztf_{d.date().isoformat()}_{d.microsecond}"
-            fn = "assets/spark_ztf_xmatch.py"
-            basepath = "hdfs://vdmaster1:8020/user/julien.peloton/archive/science"
+        topic_name = f"fxmatch_ztf_{d.date().isoformat()}_{d.microsecond}"
+        fn = "assets/spark_ztf_xmatch.py"
+        basepath = "hdfs://vdmaster1:8020/user/julien.peloton/archive/science"
 
         filename = f"stream_{topic_name}.py"
 
@@ -589,20 +587,6 @@ def layout():
                                         ),
                                     ),
                                     dmc.Space(h=20),
-                                    dmc.SegmentedControl(
-                                        id="trans_datasource_xmatch",
-                                        value="ZTF",
-                                        data=[
-                                            {
-                                                "value": "Rubin",
-                                                "label": "Rubin",
-                                                "disabled": True,
-                                            },
-                                            {"value": "ZTF", "label": "ZTF"},
-                                        ],
-                                        radius="lg",
-                                        size="lg",
-                                    ),
                                     dmc.RingProgress(
                                         roundCaps=True,
                                         sections=[{"value": 0, "color": "grey"}],
@@ -1033,37 +1017,6 @@ def update_modal(ra_label, dec_label):
     if ra_label is not None and dec_label is not None:
         return False
     return True
-
-
-@app.callback(
-    [
-        Output("date-range-picker-xmatch", "minDate"),
-        Output("date-range-picker-xmatch", "maxDate"),
-        Output("field_select_xmatch", "data"),
-    ],
-    [
-        Input("trans_datasource_xmatch", "value"),
-    ],
-    # prevent_initial_call=True,
-)
-def display_filter_tab(trans_datasource):
-    if trans_datasource is None:
-        PreventUpdate  # noqa: B018
-    else:
-        # Available fields
-        data_content_select = format_field_for_data_transfer(
-            trans_datasource, with_predefined_options=False, cutouts_allowed=False
-        )
-
-        if trans_datasource == "ZTF":
-            minDate = datetime.date(2019, 11, 1)
-            maxDate = datetime.date.today()
-
-        return (
-            minDate,
-            maxDate,
-            data_content_select,
-        )
 
 
 @callback(
