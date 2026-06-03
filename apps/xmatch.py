@@ -809,7 +809,8 @@ def layout():
     prevent_initial_call=True,
 )
 def select_columns(catalog):
-    """Populate select options and enable the column selectors
+    """
+    Populate select options and enable the column selectors
     + radius widgets when a catalog is provided.
     """
     if catalog is None or catalog == {}:
