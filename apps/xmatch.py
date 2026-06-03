@@ -149,7 +149,7 @@ def upload_catalog():
             dcc.Store(id="store-radius-column", data={"value": None}),
             dmc.HoverCard(
                 withArrow=True,
-                position='top',
+                position="top",
                 width=250,
                 shadow="md",
                 children=[
