@@ -809,9 +809,13 @@ def layout():
     prevent_initial_call=True,
 )
 def select_columns(catalog):
-    """
+    """Populate select column.
+
     Populate select options and enable the column selectors
     + radius widgets when a catalog is provided.
+
+    catalog : dict
+        Catalog provided by the user
     """
     if catalog is None or catalog == {}:
         raise PreventUpdate
