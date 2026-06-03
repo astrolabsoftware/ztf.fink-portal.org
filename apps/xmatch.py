@@ -125,7 +125,7 @@ def upload_catalog():
     """ """
     radius_number = dmc.NumberInput(
         placeholder="type value...",
-        label="Crossmatch radius in arcsecond",
+        label="Crossmatch Radius (in arcsecond)",
         variant="default",
         hideControls=True,
         id="radius-xmatch",
@@ -147,18 +147,50 @@ def upload_catalog():
         [
             dcc.Store(id="store-radius-number", data={"value": None}),
             dcc.Store(id="store-radius-column", data={"value": None}),
-            dmc.Switch(
-                id="radius-switch",
-                label="Unique (OFF) or variable (ON) radius",
-                mb=10,
-                checked=False,
+            dmc.HoverCard(
+                withArrow=True,
+                position='top',
+                width=250,
+                shadow="md",
+                children=[
+                    dmc.HoverCardTarget(
+                        dmc.Switch(
+                            id="radius-switch",
+                            onLabel=dmc.Text(
+                                "Variable",
+                                size="sm",
+                                fw=400,
+                            ),
+                            offLabel=dmc.Text(
+                                "Unique",
+                                size="sm",
+                                fw=400,
+                            ),
+                            size="lg",
+                            mb=10,
+                            checked=False,
+                            withThumbIndicator=False,
+                        )
+                    ),
+                    dmc.HoverCardDropdown(
+                        dmc.Text(
+                            """
+Choose Unique if you want the same radius for all of the coordinates in your cone search.
+Choose Variable if your dataset has a column for specific radiuses per sources.
+                            """,
+                            size="sm",
+                            ta="center",
+                        )
+                    ),
+                ],
             ),
             radius_number,
             radius_select,
         ],
         gap="xs",
-        align="flex-start",
+        align="center",
     )
+
     ra = dmc.Select(
         label="Column for Right Ascension (J2000)",
         placeholder="Select one",
@@ -176,7 +208,7 @@ def upload_catalog():
         disabled=True,
     )
     identifier = dmc.Select(
-        label="Select column for the identifier",
+        label="Select column for the Identifier",
         placeholder="Select one",
         id="id-column",
         w=250,
