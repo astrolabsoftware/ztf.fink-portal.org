@@ -811,10 +811,18 @@ def is_tracklet(pdfs):
 
 
 def is_blazar(pdfs):
-    """Auxiliary function to check whether the object is a blazar"""
-    payload = pdfs["d:blazar_stats_m0"].to_numpy()
-    if np.any(payload != -1):
-        return True
+    """Auxiliary function to check whether the object is a blazar
+
+    Notes
+    -----
+    Works for old schema (_m0), and low/high states with new schema
+    """
+    # Handle schema migration, and low/high states
+    cols = ["d:blazar_stats_m0", "d:blazar_stats_instantness_low", "d:blazar_stats_instantness_high"]
+    for col in cols:
+        payload = pdfs[col].to_numpy()
+        if np.any(payload != -1):
+            return True
     return False
 
 
