@@ -21,6 +21,7 @@ from timezonefinder import TimezoneFinder
 from zoneinfo import ZoneInfo
 import datetime
 
+from app import cache
 from fink_utils.sso.miriade import query_miriade
 
 night_colors = [
@@ -338,7 +339,31 @@ def is_sso(pdfs):
         return True
 
     return False
-    
+
+
+@cache.memoize(expire=3600)
+def query_miriade_cached(
+    ssnamenr,
+    time_tuple,
+    observer="I41",
+    rplane="1",
+    tcoor=5,
+    shift=15.0,
+    timeout=30,
+    return_json=True,
+    iofile="ephemcc-photom.xml",
+):
+    return query_miriade(
+        ssnamenr,
+        np.array(time_tuple),
+        observer=observer,
+        rplane=rplane,
+        tcoor=tcoor,
+        shift=shift,
+        timeout=timeout,
+        return_json=return_json,
+        iofile=iofile,
+    )    
 
 def sso_coordinates(pdf, time):
     ssnamenr = pdf["i:ssnamenr"].unique().astype(str)
@@ -346,14 +371,15 @@ def sso_coordinates(pdf, time):
         print(
             f"""
 Error: the object is associated to multiple known SSOs \
-- Selecting only the first identifier {ssnamenr[0]}.
+- Selecting only the first identifier: {ssnamenr[0]}.
             """
         )
         ssnamenr = ssnamenr[0]
     else:
         ssnamenr = ssnamenr[0]
-    miriade_data = query_miriade(
-        ssnamenr, time,
+    miriade_data = query_miriade_cached(
+        ssnamenr, 
+        tuple(time),
         observer="I41",
         rplane="1",
         tcoor=5,

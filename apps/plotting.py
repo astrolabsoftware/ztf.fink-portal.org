@@ -612,6 +612,9 @@ def plot_observability(
     longitude,
     latitude,
 ):
+    n_per_hour = 60
+    sso_update_interval = 1
+    sso_precision = sso_update_interval * n_per_hour
     if summary_tab != "Observability":
         raise PreventUpdate
 
@@ -626,7 +629,7 @@ def plot_observability(
         observatory = EarthLocation.of_site(observatory_name)
 
     # Time of observation
-    local_time = observability.observation_time(dateobs, delta_points=1 / 60)
+    local_time = observability.observation_time(dateobs, delta_points=1 / n_per_hour)
     UTC_time = (
         local_time - observability.observation_time_to_utc_offset(observatory) * u.hour
     )
@@ -641,7 +644,9 @@ def plot_observability(
     pdf = pd.read_json(io.StringIO(object_data))    
     if observability.is_sso(pdf):
         # For SSO: query Miriade to get position
-        ra0, dec0 = observability.sso_coordinates(pdf, UTC_time.jd)
+        ra0, dec0 = observability.sso_coordinates(pdf, UTC_time.jd[::sso_precision])
+        ra0 = np.repeat(ra0, sso_precision)
+        dec0 = np.repeat(dec0, sso_precision)
     else:
         # For static object: use the mean of the known positions
         ra0 = np.mean(pdf["i:ra"].to_numpy())
