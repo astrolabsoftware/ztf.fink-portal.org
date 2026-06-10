@@ -363,7 +363,8 @@ def query_miriade_cached(
         timeout=timeout,
         return_json=return_json,
         iofile=iofile,
-    )    
+    )
+
 
 def sso_coordinates(pdf, time):
     ssnamenr = pdf["i:ssnamenr"].unique().astype(str)
@@ -378,7 +379,7 @@ Error: the object is associated to multiple known SSOs \
     else:
         ssnamenr = ssnamenr[0]
     miriade_data = query_miriade_cached(
-        ssnamenr, 
+        ssnamenr,
         tuple(time),
         observer="I41",
         rplane="1",

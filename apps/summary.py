@@ -608,20 +608,15 @@ Additionally, querying the API may also take longer than for static objects."""
         sso_observability_card += [
             dmc.Center(
                 dmc.Alert(
-                    [
-                        dcc.Markdown(
-                            msg,
-                            id="sso_observability_warning"
-                        )
-                    ],
+                    [dcc.Markdown(msg, id="sso_observability_warning")],
                     color="yellow",
                     radius="md",
                     withCloseButton=True,
                     variant="light",
-                    w="90%"
+                    w="90%",
                 )
             ),
-            dmc.Space(h=10)
+            dmc.Space(h=10),
         ]
 
     tab_content_ = html.Div(
@@ -633,16 +628,19 @@ Additionally, querying the API may also take longer than for static objects."""
                         loading(
                             dmc.Paper(
                                 [
-                                    #dmc.Space(h=10),
+                                    # dmc.Space(h=10),
                                     dmc.Center(dcc.Markdown(id="observability_title")),
                                     html.Div(
                                         dcc.Loading(
                                             children=html.Div(id="observability_plot"),
                                             color="orange",
                                             type="circle",
-                                            id="observability_loader"
+                                            id="observability_loader",
                                         ),
-                                        style={"paddingTop": "20px", "paddingBottom": "20px"}
+                                        style={
+                                            "paddingTop": "20px",
+                                            "paddingBottom": "20px",
+                                        },
                                     ),
                                     dmc.Center(dcc.Markdown(id="moon_data")),
                                 ]

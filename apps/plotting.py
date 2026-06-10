@@ -15,7 +15,6 @@
 # import os
 import io
 import copy
-import json
 import datetime
 import textwrap
 from copy import deepcopy
@@ -576,6 +575,7 @@ layout_observability = dict(
     },
 )
 
+
 @app.callback(
     Output("observability_plot", "children"),
     [
@@ -641,7 +641,7 @@ def plot_observability(
     idx_axis = np.where(mask_axis)[0]
 
     # Observed target
-    pdf = pd.read_json(io.StringIO(object_data))    
+    pdf = pd.read_json(io.StringIO(object_data))
     if observability.is_sso(pdf):
         # For SSO: query Miriade to get position
         ra0, dec0 = observability.sso_coordinates(pdf, UTC_time.jd[::sso_precision])
