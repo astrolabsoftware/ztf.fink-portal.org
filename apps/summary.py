@@ -598,15 +598,14 @@ def tab_observability(pdf):
         radius="xl",
     )
 
-    sso_observability_card = []
+    sso_observability_card = [dmc.Space(h=20, id="moon_data_to_caution_warning")]
     if is_sso(pdf):
         msg = """
 **Caution**: This object is a known *Solar System Object*. Its observability is calculated using \
 the coordinates provided by the [Miriade ephemeride service](https://ssp.imcce.fr/webservices/miriade/api/ephemcc/), \
 which may result in less accurate predictions than those for a static object.\n
 Additionally, querying the API may also take longer than for static objects."""
-        sso_observability_card = [
-            dmc.Space(h=20, id="moon_data_to_caution_warning"),
+        sso_observability_card += [
             dmc.Center(
                 dmc.Alert(
                     [
@@ -634,9 +633,17 @@ Additionally, querying the API may also take longer than for static objects."""
                         loading(
                             dmc.Paper(
                                 [
-                                    dmc.Space(h=10),
+                                    #dmc.Space(h=10),
                                     dmc.Center(dcc.Markdown(id="observability_title")),
-                                    html.Div(id="observability_plot"),
+                                    html.Div(
+                                        dcc.Loading(
+                                            children=html.Div(id="observability_plot"),
+                                            color="orange",
+                                            type="circle",
+                                            id="observability_loader"
+                                        ),
+                                        style={"paddingTop": "20px", "paddingBottom": "20px"}
+                                    ),
                                     dmc.Center(dcc.Markdown(id="moon_data")),
                                 ]
                                 + sso_observability_card
