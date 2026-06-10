@@ -21,6 +21,8 @@ from timezonefinder import TimezoneFinder
 from zoneinfo import ZoneInfo
 import datetime
 
+from fink_utils.sso.miriade import query_miriade
+
 night_colors = [
     "rgba(204, 229, 255, 0.5)",
     "rgba(153, 204, 255, 0.5)",
@@ -323,3 +325,46 @@ def from_time_to_axis(times):
         List of hours starting at -12h
     """
     return np.array([time.to_value("iso", subfmt="date_hm")[-5:] for time in times])
+
+
+# Copied from apps.summary: think of a better storage solution
+def is_sso(pdfs):
+    """Auxiliary function to check whether the object is a SSO"""
+    payload = pdfs["i:ssnamenr"].to_numpy()[0]
+    if str(payload) == "null" or str(payload) == "None":
+        return False
+
+    if np.all([i == payload for i in pdfs["i:ssnamenr"].to_numpy()]):
+        return True
+
+    return False
+    
+
+def sso_coordinates(pdf, time):
+    ssnamenr = pdf["i:ssnamenr"].unique().astype(str)
+    if len(ssnamenr) > 1:
+        print(
+            f"""
+Error: the object is associated to multiple known SSOs \
+- Selecting only the first identifier {ssnamenr[0]}.
+            """
+        )
+        ssnamenr = ssnamenr[0]
+    else:
+        ssnamenr = ssnamenr[0]
+    miriade_data = query_miriade(
+        ssnamenr, time,
+        observer="I41",
+        rplane="1",
+        tcoor=5,
+        shift=15.0,
+        timeout=30,
+        return_json=True,
+        iofile="ephemcc-photom.xml",
+    )
+    ra = np.full(len(time), np.nan)
+    dec = np.full(len(time), np.nan)
+    for idx, d in enumerate(miriade_data["data"]):
+        ra[idx] = d["RA"]
+        dec[idx] = d["DEC"]
+    return ra, dec

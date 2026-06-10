@@ -15,6 +15,7 @@
 # import os
 import io
 import copy
+import json
 import datetime
 import textwrap
 from copy import deepcopy
@@ -575,7 +576,6 @@ layout_observability = dict(
     },
 )
 
-
 @app.callback(
     Output("observability_plot", "children"),
     [
@@ -614,10 +614,7 @@ def plot_observability(
     if summary_tab != "Observability":
         raise PreventUpdate
 
-    pdf = pd.read_json(io.StringIO(object_data))
-    ra0 = np.mean(pdf["i:ra"].to_numpy())
-    dec0 = np.mean(pdf["i:dec"].to_numpy())
-
+    # Observatory position
     if longitude and latitude:
         lat = Latitude(latitude, unit=u.deg).deg
         lon = Longitude(longitude, unit=u.deg).deg
@@ -627,6 +624,7 @@ def plot_observability(
     else:
         observatory = EarthLocation.of_site(observatory_name)
 
+    # Time of observation
     local_time = observability.observation_time(dateobs, delta_points=1 / 60)
     UTC_time = (
         local_time - observability.observation_time_to_utc_offset(observatory) * u.hour
@@ -637,6 +635,17 @@ def plot_observability(
         True if t[-2:] == "00" and int(t[:2]) % 2 == 0 else False for t in UTC_axis
     ]
     idx_axis = np.where(mask_axis)[0]
+
+    # Observed target
+    pdf = pd.read_json(io.StringIO(object_data))    
+    if observability.is_sso(pdf):
+        # For SSO: query Miriade to get position
+        ra0, dec0 = observability.sso_coordinates(pdf, UTC_time.jd)
+    else:
+        # For static object: use the mean of the known positions
+        ra0 = np.mean(pdf["i:ra"].to_numpy())
+        dec0 = np.mean(pdf["i:dec"].to_numpy())
+
     target_coordinates = observability.target_coordinates(
         ra0, dec0, observatory, UTC_time
     )
@@ -802,6 +811,7 @@ def plot_observability(
 
 @app.callback(
     Output("moon_data", "children"),
+    Output("moon_data_to_caution_warning", "h"),
     [
         Input("summary_tabs", "value"),
         Input("submit_observability", "n_clicks"),
@@ -827,13 +837,14 @@ def show_moon_data(
 
     date_time = Time(dateobs, scale="utc")
     msg = None
+    h = 0 if (moon_phase or moon_illumination) else 20
     if moon_phase and not moon_illumination:
         msg = f"Moon phase: {observability.get_moon_phase(date_time)}"
     elif not moon_phase and moon_illumination:
         msg = f"Moon illumination: {int(100 * observability.get_moon_illumination(date_time))}%"
     elif moon_phase and moon_illumination:
         msg = f"moon phase: `{observability.get_moon_phase(date_time)}`, moon illumination: `{int(100 * observability.get_moon_illumination(date_time))}%`"
-    return msg
+    return msg, h
 
 
 @app.callback(
