@@ -603,8 +603,7 @@ def tab_observability(pdf):
         msg = """
 **Caution**: This object is a known *Solar System Object*. Its observability is calculated using \
 the coordinates provided by the [Miriade ephemeride service](https://ssp.imcce.fr/webservices/miriade/api/ephemcc/), \
-which may result in less accurate predictions than those for a static object.\n
-Additionally, querying the API may also take longer than for static objects."""
+which may result in less accurate predictions than those for a static object."""
         sso_observability_card += [
             dmc.Center(
                 dmc.Alert(
