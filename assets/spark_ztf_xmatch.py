@@ -303,7 +303,7 @@ def generate_spark_paths(startDate, stopDate, basePath):
 
 
 def perform_xmatch(spark, df, catalog_filename, ra_col, dec_col, id_col, radius_arcsec):
-    """ """
+    """"""
     df_other = spark.read.format("parquet").load(catalog_filename)
     pdf_other = df_other.toPandas()
     pdf_b = spark.sparkContext.broadcast(pdf_other)
@@ -332,8 +332,19 @@ def perform_xmatch(spark, df, catalog_filename, ra_col, dec_col, id_col, radius_
             dec=np.array(dec2, dtype=np.float) * u.degree,
         )
 
+        if (
+            isinstance(radius_arcsec, dict)
+            and radius_arcsec["value"] in pdf_cat.columns
+        ):
+            radius_col = pdf_cat[radius_arcsec["value"]]
+        elif isinstance(radius_arcsec, float) or isinstance(radius_arcsec, int):
+            radius_col = pd.Series([radius_arcsec])
+        else:
+            # FIXME: log error message
+            pass
+
         pdf_merge, mask, idx2 = cross_match_astropy(
-            pdf, catalog_ztf, catalog_other, radius_arcsec=pd.Series([radius_arcsec])
+            pdf, catalog_ztf, catalog_other, radius_arcsec=radius_col
         )
 
         pdf_merge["Type"] = "Unknown"
