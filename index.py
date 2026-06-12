@@ -76,7 +76,8 @@ fink_classes = [
     "Solar System candidate",
     "Tracklet",
     "Ambiguous",
-    "(CTA) Blazar",
+    "(CTA) Blazar low state",
+    "(CTA) Blazar high state",
     # TNS classified data
     *["(TNS) " + t for t in tns_types],
     # Simbad crossmatch
@@ -168,7 +169,7 @@ Examples:
 - `last=10 class="Early SN Ia candidate"` - return 10 latest arly SN Ia candidates
 - `class="Early SN Ia candidate" before="2023-12-01" after="2023-11-07 04:00:00"` - objects of the same class between 4am on Nov 15, 2023 and Dec 1, 2023
 - `class="Early SN Ia candidate" before="2023-12-01" after="2023-11-07 04:00:00" trend=rising` - objects of the same class between 4am on Nov 15, 2023 and Dec 1, 2023, that were rising (becoming brighter).
-- `class="(CTA) Blazar" trend=low_state after=2025-02-01 before=2025-02-13` - Blazars selected by CTA which were in a low state between the 1st February and 13th February 2025.
+- `class="(CTA) Blazar low state" trend=low_state after=2025-02-01 before=2025-02-13` - Blazars selected by CTA which were in a low state between the 1st February and 13th February 2025.
 
 """
 
@@ -195,7 +196,7 @@ quick_fields = [
     ["class", "Alert class\nSelect one of Fink supported classes from the menu"],
     [
         "trend",
-        "Lightcurve trends: rising, fading.\nExperimental feature, only available in combination with class search.\nFor the class (CTA) Blazar, the tags low_state and new_low_State are also available.",
+        "Lightcurve trends: rising, fading.\nExperimental feature, only available in combination with class search.\nFor the class (CTA) `Blazar low state`, the tags low_state and new_low_State are also available.",
     ],
     ["last", "Number of latest alerts to show. Must be used with the `class` keyword."],
     [

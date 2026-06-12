@@ -26,11 +26,5 @@ jobs:
         pip install ruff
     - name: Lint
       run: |
-        ruff check --statistics *.py 
-        ruff check --statistics apps/
-        ruff check --statistics assets/*.py
-    - name: Format
-      run: |
-        ruff format --check *.py
-        ruff format --check apps/
-        ruff format --check assets/*.py
+        ruff check --statistics . 
+        ruff format --check .
