@@ -183,4 +183,4 @@ xyzservices==2024.9.0
 yarl==1.18.3
 zipp==3.21.0
 zstandard==0.23.0
-git+https://github.com/astrolabsoftware/fink-science@8.25.0
+git+https://github.com/astrolabsoftware/fink-science@8.50.0
