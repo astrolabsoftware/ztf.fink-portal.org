@@ -856,9 +856,10 @@ def is_blazar(pdfs):
         "d:blazar_stats_instantness_high",
     ]
     for col in cols:
-        payload = pdfs[col].to_numpy()
-        if np.any(payload != -1):
-            return True
+        if col in pdfs.columns:
+            payload = pdfs[col].to_numpy()
+            if np.any(payload != -1):
+                return True
     return False
 
 
