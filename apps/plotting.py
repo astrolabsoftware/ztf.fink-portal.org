@@ -598,8 +598,21 @@ layout_observability_polar = dict(
             rotation=90,
             direction="clockwise",
             tickmode="array",
-            tickvals=[30*i for i in range (12)],
-            ticktext=["N", "30°", "60°", "E", "120°", "150°", "S", "210°", "240°", "W", "300°", "330°"],
+            tickvals=[30 * i for i in range(12)],
+            ticktext=[
+                "N",
+                "30°",
+                "60°",
+                "E",
+                "120°",
+                "150°",
+                "S",
+                "210°",
+                "240°",
+                "W",
+                "300°",
+                "330°",
+            ],
             linewidth=2,
         ),
         radialaxis=dict(
@@ -717,7 +730,7 @@ def get_observability_data(
         UTC_axis,
         idx_axis,
         local_time,
-        local_axis
+        local_axis,
     )
 
 
@@ -762,21 +775,19 @@ def plot_observability_elevation(
 
     # Get data
     __ = get_observability_data(
-            object_data,
-            observatory_name,
-            dateobs,
-            longitude,
-            latitude,
-        )
+        object_data,
+        observatory_name,
+        dateobs,
+        longitude,
+        latitude,
+    )
     target_coordinates = __[0]
     airmass = __[1]
-    twilights_time = __[2]
     twilights_list = __[3]
     observatory = __[4]
     UTC_time = __[5]
     UTC_axis = __[6]
     idx_axis = __[7]
-    local_time = __[8]
     local_axis = __[9]
 
     # Initialize figure
@@ -971,29 +982,24 @@ def plot_observability_polar(
 
     # Get data
     __ = get_observability_data(
-            object_data,
-            observatory_name,
-            dateobs,
-            longitude,
-            latitude,
-        )
+        object_data,
+        observatory_name,
+        dateobs,
+        longitude,
+        latitude,
+    )
     target_coordinates = __[0]
     airmass = __[1]
     twilights_time = __[2]
-    twilights_list = __[3]
-    observatory = __[4]
     UTC_time = __[5]
     UTC_axis = __[6]
-    idx_axis = __[7]
-    local_time = __[8]
-    local_axis = __[9]
     twilights_time = [UTC_time[0]] + twilights_time + [UTC_time[-1]]
 
     # Initialize figure
     figure = {"data": [], "layout": copy.deepcopy(layout_observability_polar)}
 
     # Custom layout
-    for theta in [15*(2*i+1) for i in range(12)]:
+    for theta in [15 * (2 * i + 1) for i in range(12)]:
         figure["data"].append(
             {
                 "type": "scatterpolar",
@@ -1021,8 +1027,12 @@ def plot_observability_polar(
     )
 
     for idx in range(4):
-        mask_before = (UTC_time < twilights_time[idx+1]) & (UTC_time >= twilights_time[idx])
-        mask_after = (UTC_time > twilights_time[-idx-2]) & (UTC_time <= twilights_time[-idx-1])
+        mask_before = (UTC_time < twilights_time[idx + 1]) & (
+            UTC_time >= twilights_time[idx]
+        )
+        mask_after = (UTC_time > twilights_time[-idx - 2]) & (
+            UTC_time <= twilights_time[-idx - 1]
+        )
         figure["data"].append(
             {
                 "type": "scatterpolar",
@@ -1065,25 +1075,25 @@ def plot_observability_polar(
         )
     mask_night = (UTC_time <= twilights_time[5]) & (UTC_time >= twilights_time[4])
     figure["data"].append(
-            {
-                "type": "scatterpolar",
-                "theta": target_coordinates.az.value[mask_night],
-                "r": target_coordinates.alt.value[mask_night],
-                "mode": "lines",
-                "name": "Target trajectory",
-                "line": observability.polar_props[4],
-                "customdata": np.stack(
-                    [
-                        UTC_axis[mask_night],
-                        airmass[mask_night],
-                    ],
-                    axis=-1,
-                ),
-                "legendgroup": "target",
-                "showlegend": True,
-                "hovertemplate": hovertemplate_polar,
-            }
-        )
+        {
+            "type": "scatterpolar",
+            "theta": target_coordinates.az.value[mask_night],
+            "r": target_coordinates.alt.value[mask_night],
+            "mode": "lines",
+            "name": "Target trajectory",
+            "line": observability.polar_props[4],
+            "customdata": np.stack(
+                [
+                    UTC_axis[mask_night],
+                    airmass[mask_night],
+                ],
+                axis=-1,
+            ),
+            "legendgroup": "target",
+            "showlegend": True,
+            "hovertemplate": hovertemplate_polar,
+        }
+    )
 
     # Graph
     graph = dcc.Graph(
@@ -1097,7 +1107,7 @@ def plot_observability_polar(
         config={"displayModeBar": False},
         responsive=True,
     )
-    
+
     return graph
 
 

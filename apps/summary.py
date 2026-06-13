@@ -640,7 +640,7 @@ which may result in less accurate predictions than those for a static object."""
                                 "paddingTop": "20px",
                                 "paddingBottom": "20px",
                             },
-                        )
+                        ),
                     ]
                 ),
             ],
@@ -663,7 +663,7 @@ which may result in less accurate predictions than those for a static object."""
                                 "paddingTop": "20px",
                                 "paddingBottom": "20px",
                             },
-                        )
+                        ),
                     ]
                 ),
             ],
@@ -684,7 +684,7 @@ which may result in less accurate predictions than those for a static object."""
 
     tab_content_ = html.Div(
         [
-            #dmc.Space(h=10),
+            # dmc.Space(h=10),
             dbc.Row(
                 [
                     dbc.Col(
