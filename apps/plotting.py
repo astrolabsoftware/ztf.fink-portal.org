@@ -540,7 +540,7 @@ layout_blazar = dict(
     },
 )
 
-layout_observability = dict(
+layout_observability_elevation = dict(
     automargin=True,
     margin=dict(l=50, r=30, b=0, t=0),
     hovermode="closest",
@@ -575,48 +575,90 @@ layout_observability = dict(
     },
 )
 
-
-@app.callback(
-    Output("observability_plot", "children"),
-    [
-        Input("summary_tabs", "value"),
-        Input("submit_observability", "n_clicks"),
-        Input("object-data", "data"),
-    ],
-    [
-        State("observatory", "value"),
-        State("dateobs", "value"),
-        State("moon_elevation", "checked"),
-        State("moon_phase", "checked"),
-        State("moon_illumination", "checked"),
-        State("longitude", "value"),
-        State("latitude", "value"),
-    ],
-    prevent_initial_call=True,
-    background=True,
-    running=[
-        (Output("submit_observability", "disabled"), True, False),
-        (Output("submit_observability", "loading"), True, False),
-        (Output("observability_loader", "visible"), False, True),
-    ],
+layout_observability_polar = dict(
+    margin=dict(l=50, r=30, b=0, t=0),
+    showlegend=True,
+    hovermode="closest",
+    hoverlabel={
+        "align": "left",
+        "namelength": -1,
+    },
+    legend=dict(
+        font=dict(size=10),
+        orientation="h",
+        xanchor="right",
+        x=1,
+        yanchor="bottom",
+        y=1.02,
+        bgcolor="rgba(218, 223, 225, 0.3)",
+    ),
+    polar=dict(
+        bgcolor="white",
+        angularaxis=dict(
+            rotation=90,
+            direction="clockwise",
+            tickmode="array",
+            tickvals=[0, 90, 180, 270],
+            ticktext=["N", "E", "S", "W"],
+        ),
+        radialaxis=dict(
+            range=[90, 0],
+            tickvals=[0, 15, 30, 45, 60, 75, 90],
+            ticktext=["90°", "", "60°", "", "30°", "", "0°"],
+            angle=0,
+        ),
+    ),
 )
-def plot_observability(
-    summary_tab,
-    nclick,
+
+
+def get_observability_data(
     object_data,
     observatory_name,
     dateobs,
-    moon_elevation,
-    moon_phase,
-    moon_illumination,
     longitude,
     latitude,
 ):
+    """Compute required observability data.
+
+    Parameters
+    ----------
+    object_data: str
+        Parsed JSON data of the source.
+    observatory_name: str
+        Name of the observaotry, must be in Astropy list.
+        Default is "Palomar".
+    dateobs: str
+        Considered date for observation. Format in YYYY-MM-DD.
+    longitude: float
+        For custom observatory, longitude in degrees.
+    latitude: float
+        For custom observatory, latitude in degrees.
+
+    Returns
+    -------
+    target_coordinates: np.array[astropy.coordinates.SkyCoord]
+        Coordinates of the source (with elevation and azimut)
+        from the observatory at every point in obs_time.
+    airmass: np.array
+        Array of relative airmass.
+    twilights_list: np.array
+        List of hours starting at -12h.
+    observatory: astropy.coordinates.EarthLocation
+        Astropy EarthLocation object representing the observatory
+    UTC_time: np.array[astropy.time.Time]
+        Array of time points starting from -12h to +12h, UTC time zone.
+    UTC_axis: np.array
+        List of hours starting at -12h, UTC time zone.
+    idx_axis: np.array
+        Indexes of ticks display in time axes.
+    local_time: np.array[astropy.time.Time]
+        Array of time points starting from -12h to +12h.
+    local_axis: np.array
+        List of hours starting at -12h
+    """
     n_per_hour = 60
     sso_update_interval = 1
     sso_precision = sso_update_interval * n_per_hour
-    if summary_tab != "Observability":
-        raise PreventUpdate
 
     # Observatory position
     if longitude and latitude:
@@ -664,8 +706,78 @@ def plot_observability(
     )
     twilights_list = observability.from_time_to_axis(list(twilights.values()))
 
+    return (
+        target_coordinates,
+        airmass,
+        twilights_list,
+        observatory,
+        UTC_time,
+        UTC_axis,
+        idx_axis,
+        local_time,
+        local_axis
+    )
+
+
+@app.callback(
+    Output("observability_plot_elevation", "children"),
+    [
+        Input("summary_tabs", "value"),
+        Input("submit_observability", "n_clicks"),
+        Input("object-data", "data"),
+    ],
+    [
+        State("observatory", "value"),
+        State("dateobs", "value"),
+        State("moon_elevation", "checked"),
+        State("moon_phase", "checked"),
+        State("moon_illumination", "checked"),
+        State("longitude", "value"),
+        State("latitude", "value"),
+    ],
+    prevent_initial_call=True,
+    background=True,
+    running=[
+        (Output("submit_observability", "disabled"), True, False),
+        (Output("submit_observability", "loading"), True, False),
+        (Output("observability_loader", "visible"), False, True),
+    ],
+)
+def plot_observability_elevation(
+    summary_tab,
+    nclick,
+    object_data,
+    observatory_name,
+    dateobs,
+    moon_elevation,
+    moon_phase,
+    moon_illumination,
+    longitude,
+    latitude,
+):
+    if summary_tab != "Observability":
+        raise PreventUpdate
+
+    # Get data
+    __ = get_observability_data(
+            object_data,
+            observatory_name,
+            dateobs,
+            longitude,
+            latitude,
+        )
+    target_coordinates = __[0]
+    airmass = __[1]
+    twilights_list = __[2]
+    observatory = __[3]
+    UTC_time = __[4]
+    UTC_axis = __[5]
+    idx_axis = __[6]
+    local_time = __[7]
+    local_axis = __[8]
+
     # Initialize figure
-    figure = {"data": [], "layout": copy.deepcopy(layout_observability)}
+    figure = {"data": [], "layout": copy.deepcopy(layout_observability_elevation)}
 
     # Add UTC time in the layout
     figure["layout"]["xaxis"] = {
@@ -816,6 +928,113 @@ def plot_observability(
 
 
 @app.callback(
+    Output("observability_plot_polar", "children"),
+    [
+        Input("summary_tabs", "value"),
+        Input("submit_observability", "n_clicks"),
+        Input("object-data", "data"),
+    ],
+    [
+        State("observatory", "value"),
+        State("dateobs", "value"),
+        State("moon_elevation", "checked"),
+        State("moon_phase", "checked"),
+        State("moon_illumination", "checked"),
+        State("longitude", "value"),
+        State("latitude", "value"),
+    ],
+    prevent_initial_call=True,
+    background=True,
+    running=[
+        (Output("submit_observability", "disabled"), True, False),
+        (Output("submit_observability", "loading"), True, False),
+        (Output("observability_loader", "visible"), False, True),
+    ],
+)
+def plot_observability_polar(
+    summary_tab,
+    nclick,
+    object_data,
+    observatory_name,
+    dateobs,
+    moon_elevation,
+    moon_phase,
+    moon_illumination,
+    longitude,
+    latitude,
+):
+    if summary_tab != "Observability":
+        raise PreventUpdate
+
+    # Get data
+    __ = get_observability_data(
+            object_data,
+            observatory_name,
+            dateobs,
+            longitude,
+            latitude,
+        )
+    target_coordinates = __[0]
+    airmass = __[1]
+    twilights_list = __[2]
+    observatory = __[3]
+    UTC_time = __[4]
+    UTC_axis = __[5]
+    idx_axis = __[6]
+    local_time = __[7]
+    local_axis = __[8]
+    print(twilights_list)
+
+    # Initialize figure
+    figure = {"data": [], "layout": copy.deepcopy(layout_observability_polar)}
+
+    # Trajectory
+    hovertemplate_polar = textwrap.dedent(
+        r"""
+        <b>UTC time</b>:%{customdata[0]}<br>
+        <b>Elevation</b>: %{r:.0f} &deg;<br>
+        <b>Azimut</b>: %{theta:.0f} &deg;<br>
+        <b>Relative airmass</b>: %{customdata[1]:.2f}
+        <extra></extra>
+        """
+    )
+
+    figure["data"].append(
+        {
+            "type": "scatterpolar",
+            "theta": target_coordinates.az.value,
+            "r": target_coordinates.alt.value,
+            "mode": "lines",
+            "name": "Target",
+            "line": {"color": "black"},
+            "customdata": np.stack(
+                [
+                    UTC_axis,
+                    airmass,
+                ],
+                axis=-1,
+            ),
+            "hovertemplate": hovertemplate_polar,
+        }
+    )
+
+    # Graph
+    graph = dcc.Graph(
+        figure=figure,
+        style={
+            "width": "90%",
+            "height": "30pc",
+            "marginLeft": "auto",
+            "marginRight": "auto",
+        },
+        config={"displayModeBar": False},
+        responsive=True,
+    )
+    
+    return graph
+
+
+@app.callback(
     Output("moon_data", "children"),
     Output("moon_data_to_caution_warning", "h"),
     [
@@ -855,7 +1074,8 @@ def show_moon_data(
 
 
 @app.callback(
-    Output("observability_title", "children"),
+    Output("observability_title_elevation", "children"),
+    Output("observability_title_polar", "children"),
     [
         Input("summary_tabs", "value"),
         Input("submit_observability", "n_clicks"),
@@ -885,7 +1105,7 @@ def show_observability_title(
     msg += (Time(dateobs) - 1 * u.day).to_value("iso", subfmt="date")
     msg += " and "
     msg += Time(dateobs).to_value("iso", subfmt="date")
-    return msg
+    return msg, msg
 
 
 @app.callback(
