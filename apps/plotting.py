@@ -598,8 +598,9 @@ layout_observability_polar = dict(
             rotation=90,
             direction="clockwise",
             tickmode="array",
-            tickvals=[0, 90, 180, 270],
-            ticktext=["N", "E", "S", "W"],
+            tickvals=[30*i for i in range (12)],
+            ticktext=["N", "30°", "60°", "E", "120°", "150°", "S", "210°", "240°", "W", "300°", "330°"],
+            linewidth=2,
         ),
         radialaxis=dict(
             range=[90, 0],
@@ -991,6 +992,23 @@ def plot_observability_polar(
     # Initialize figure
     figure = {"data": [], "layout": copy.deepcopy(layout_observability_polar)}
 
+    # Custom layout
+    for theta in [15*(2*i+1) for i in range(12)]:
+        figure["data"].append(
+            {
+                "type": "scatterpolar",
+                "theta": [theta, theta],
+                "r": [0, 90],
+                "mode": "lines",
+                "line": {
+                    "color": "rgba(218, 223, 225, 0.8)",
+                    "width": 1,
+                },
+                "hoverinfo": "skip",
+                "showlegend": False,
+            }
+        )
+
     # Trajectory
     hovertemplate_polar = textwrap.dedent(
         r"""
@@ -1012,7 +1030,7 @@ def plot_observability_polar(
                 "r": target_coordinates.alt.value[mask_before],
                 "mode": "lines",
                 "name": "Target trajectory",
-                "line": {"color": observability.polar_colors[idx]},
+                "line": observability.polar_props[idx],
                 "customdata": np.stack(
                     [
                         UTC_axis[mask_before],
@@ -1032,7 +1050,7 @@ def plot_observability_polar(
                 "r": target_coordinates.alt.value[mask_after],
                 "mode": "lines",
                 "name": "Target trajectory",
-                "line": {"color": observability.polar_colors[idx]},
+                "line": observability.polar_props[idx],
                 "customdata": np.stack(
                     [
                         UTC_axis[mask_after],
@@ -1053,7 +1071,7 @@ def plot_observability_polar(
                 "r": target_coordinates.alt.value[mask_night],
                 "mode": "lines",
                 "name": "Target trajectory",
-                "line": {"color": observability.polar_colors[4]},
+                "line": observability.polar_props[4],
                 "customdata": np.stack(
                     [
                         UTC_axis[mask_night],
