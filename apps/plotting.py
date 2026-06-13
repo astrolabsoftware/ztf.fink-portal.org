@@ -576,7 +576,7 @@ layout_observability_elevation = dict(
 )
 
 layout_observability_polar = dict(
-    margin=dict(l=50, r=30, b=0, t=0),
+    margin=dict(l=50, r=30, b=30, t=0),
     showlegend=True,
     hovermode="closest",
     hoverlabel={
@@ -593,7 +593,7 @@ layout_observability_polar = dict(
         bgcolor="rgba(218, 223, 225, 0.3)",
     ),
     polar=dict(
-        bgcolor="white",
+        bgcolor="rgba(218, 223, 225, 0.1)",
         angularaxis=dict(
             rotation=90,
             direction="clockwise",
@@ -709,6 +709,7 @@ def get_observability_data(
     return (
         target_coordinates,
         airmass,
+        list(twilights.values()),
         twilights_list,
         observatory,
         UTC_time,
@@ -768,13 +769,14 @@ def plot_observability_elevation(
         )
     target_coordinates = __[0]
     airmass = __[1]
-    twilights_list = __[2]
-    observatory = __[3]
-    UTC_time = __[4]
-    UTC_axis = __[5]
-    idx_axis = __[6]
-    local_time = __[7]
-    local_axis = __[8]
+    twilights_time = __[2]
+    twilights_list = __[3]
+    observatory = __[4]
+    UTC_time = __[5]
+    UTC_axis = __[6]
+    idx_axis = __[7]
+    local_time = __[8]
+    local_axis = __[9]
 
     # Initialize figure
     figure = {"data": [], "layout": copy.deepcopy(layout_observability_elevation)}
@@ -976,13 +978,15 @@ def plot_observability_polar(
         )
     target_coordinates = __[0]
     airmass = __[1]
-    twilights_list = __[2]
-    observatory = __[3]
-    UTC_time = __[4]
-    UTC_axis = __[5]
-    idx_axis = __[6]
-    local_time = __[7]
-    local_axis = __[8]
+    twilights_time = __[2]
+    twilights_list = __[3]
+    observatory = __[4]
+    UTC_time = __[5]
+    UTC_axis = __[6]
+    idx_axis = __[7]
+    local_time = __[8]
+    local_axis = __[9]
+    twilights_time = [UTC_time[0]] + twilights_time + [UTC_time[-1]]
 
     # Initialize figure
     figure = {"data": [], "layout": copy.deepcopy(layout_observability_polar)}
@@ -998,24 +1002,70 @@ def plot_observability_polar(
         """
     )
 
+    for idx in range(4):
+        mask_before = (UTC_time < twilights_time[idx+1]) & (UTC_time >= twilights_time[idx])
+        mask_after = (UTC_time > twilights_time[-idx-2]) & (UTC_time <= twilights_time[-idx-1])
+        figure["data"].append(
+            {
+                "type": "scatterpolar",
+                "theta": target_coordinates.az.value[mask_before],
+                "r": target_coordinates.alt.value[mask_before],
+                "mode": "lines",
+                "name": "Target trajectory",
+                "line": {"color": observability.polar_colors[idx]},
+                "customdata": np.stack(
+                    [
+                        UTC_axis[mask_before],
+                        airmass[mask_before],
+                    ],
+                    axis=-1,
+                ),
+                "legendgroup": "target",
+                "showlegend": False,
+                "hovertemplate": hovertemplate_polar,
+            }
+        )
+        figure["data"].append(
+            {
+                "type": "scatterpolar",
+                "theta": target_coordinates.az.value[mask_after],
+                "r": target_coordinates.alt.value[mask_after],
+                "mode": "lines",
+                "name": "Target trajectory",
+                "line": {"color": observability.polar_colors[idx]},
+                "customdata": np.stack(
+                    [
+                        UTC_axis[mask_after],
+                        airmass[mask_after],
+                    ],
+                    axis=-1,
+                ),
+                "legendgroup": "target",
+                "showlegend": False,
+                "hovertemplate": hovertemplate_polar,
+            }
+        )
+    mask_night = (UTC_time <= twilights_time[5]) & (UTC_time >= twilights_time[4])
     figure["data"].append(
-        {
-            "type": "scatterpolar",
-            "theta": target_coordinates.az.value,
-            "r": target_coordinates.alt.value,
-            "mode": "lines",
-            "name": "Target",
-            "line": {"color": "black"},
-            "customdata": np.stack(
-                [
-                    UTC_axis,
-                    airmass,
-                ],
-                axis=-1,
-            ),
-            "hovertemplate": hovertemplate_polar,
-        }
-    )
+            {
+                "type": "scatterpolar",
+                "theta": target_coordinates.az.value[mask_night],
+                "r": target_coordinates.alt.value[mask_night],
+                "mode": "lines",
+                "name": "Target trajectory",
+                "line": {"color": observability.polar_colors[4]},
+                "customdata": np.stack(
+                    [
+                        UTC_axis[mask_night],
+                        airmass[mask_night],
+                    ],
+                    axis=-1,
+                ),
+                "legendgroup": "target",
+                "showlegend": True,
+                "hovertemplate": hovertemplate_polar,
+            }
+        )
 
     # Graph
     graph = dcc.Graph(

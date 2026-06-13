@@ -678,7 +678,7 @@ which may result in less accurate predictions than those for a static object."""
             ),
             *tabs_panels,
         ],
-        value="observability_subtabs",
+        value="elevation",
         id="observability_subtabs",
     )
 
