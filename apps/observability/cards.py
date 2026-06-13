@@ -25,15 +25,17 @@ from apps.cards import card_neighbourhood
 def card_explanation_observability():
     """Explain what is used to fit for Observability"""
     msg = """
-    This plot is calculated using the [Astropy](http://www.astropy.org/) library. It shows the altitude and corresponding airmass of a source along the night. The UTC time is given on the lower axis while the local time is given on the upper axis.
+These plots are calculated using the [Astropy](http://www.astropy.org/) library. The elevation plot shows the altitude and corresponding airmass of a source throughout the night. The lower axis shows the UTC time, while the upper axis shows the local time.
 
-    The right panel allows you to select an observation date and an observatory. You can also choose to display the altitude of the moon during the night, as well as its phase and illumination. Once you have selected a date and an observatory, click on `Update Plot`.
+The right-hand panel enables you to select an observation date and observatory. You can also choose to display the altitude of the moon during the night, as well as its phase and illumination. Once you have made your selections, click on `Update Plot`.
 
-    The plot also shows the different definitions of nights, which can be useful, from lighter to darker shades of blue. These are no-sun night (sun below the horizon), civil night (sun 6° below the horizon), nautical night (sun 12° below the horizon) and astronomical night (sun 18° below the horizon).
+The plot also shows the different night-time definitions, ranging from lighter to darker shades of blue. These are: no-sun night (sun below the horizon), civil night (sun 6° below the horizon), nautical night (sun 12° below the horizon), and astronomical night (sun 18° below the horizon).
 
-    If you cannot find your observatory of choice, you can enter its coordinates in the `Custom Observatory` field. Remember that both longitude and latitude must be written in decimal degrees. Note that longitudes are negative towards the west. You can omit the positive sign of the longitude and latitude. To use the existing list of observatories again, clear the `Longitude` and `Latitude` fields in the `Custom Observatory` section.
+The polar plot shows the trajectory of the source during the night. Again, lighter to darker shades of blue represent the position of the source in relation to no-sun, civil, nautical and astronomical nights. The trajectory of the source in daylight is dotted.
 
-    In case your observatory is not listed here, you can also open a [ticket](https://github.com/astrolabsoftware/fink-science-portal/issues) with the coordinates.
+If you cannot find your chosen observatory, you can enter its coordinates in the `Custom Observatory` field. Remember that both longitude and latitude must be written in decimal degrees. Note that longitudes are negative towards the west. You can omit the positive sign for longitude and latitude. To use the existing list of observatories again, clear the `Longitude` and `Latitude` fields in the `Custom Observatory` section.
+
+In case your observatory is not listed, you can also open a [ticket](https://github.com/astrolabsoftware/fink-science-portal/issues) with its coordinates.
     """
     card = dmc.Accordion(
         children=[
