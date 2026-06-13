@@ -619,8 +619,8 @@ which may result in less accurate predictions than those for a static object."""
         ]
 
     tabs_list = [
-        dmc.TabsTab("Elevation panel", value="Elevation"),
-        dmc.TabsTab("Polar panel", value="Polar"),
+        dmc.TabsTab("Elevation panel", value="elevation"),
+        dmc.TabsTab("Polar panel", value="polar"),
     ]
     tabs_panels = [
         dmc.TabsPanel(
@@ -644,7 +644,7 @@ which may result in less accurate predictions than those for a static object."""
                     ]
                 ),
             ],
-            value="Elevation",
+            value="elevation",
         ),
         dmc.TabsPanel(
             children=[
@@ -667,7 +667,7 @@ which may result in less accurate predictions than those for a static object."""
                     ]
                 ),
             ],
-            value="Polar",
+            value="polar",
         ),
     ]
     subtabs = dmc.Tabs(
@@ -678,8 +678,8 @@ which may result in less accurate predictions than those for a static object."""
             ),
             *tabs_panels,
         ],
-        value="Elevation",
-        id="observability_subtab",
+        value="observability_subtabs",
+        id="observability_subtabs",
     )
 
     tab_content_ = html.Div(

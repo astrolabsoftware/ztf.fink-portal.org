@@ -983,7 +983,6 @@ def plot_observability_polar(
     idx_axis = __[6]
     local_time = __[7]
     local_axis = __[8]
-    print(twilights_list)
 
     # Initialize figure
     figure = {"data": [], "layout": copy.deepcopy(layout_observability_polar)}
@@ -1032,6 +1031,16 @@ def plot_observability_polar(
     )
     
     return graph
+
+
+@app.callback(
+    Output("moon_elevation", "disabled"),
+    Input("observability_subtabs", "value"),
+    prevent_initial_call=True,
+    background=True,
+)
+def disable_moon_trajectory(active_tab):
+    return active_tab == "polar"
 
 
 @app.callback(
