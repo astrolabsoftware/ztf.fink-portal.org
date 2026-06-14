@@ -34,6 +34,22 @@ night_colors = [
     "rgba(204, 229, 255, 0.5)",
 ]
 
+polar_props = [
+    {"color": "rgba(160, 200, 255, 0.8)", "dash": "dot"},
+    {
+        "color": "rgba(160, 200, 255, 0.8)",
+    },
+    {
+        "color": "rgba(80, 130, 255, 0.8)",
+    },
+    {
+        "color": "rgba(20, 40, 180, 0.8)",
+    },
+    {
+        "color": "black",
+    },
+]
+
 moon_color = "#9900cc"
 
 additional_observatories_data = {
