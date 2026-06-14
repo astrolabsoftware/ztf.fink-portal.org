@@ -627,7 +627,7 @@ which may result in less accurate predictions than those for a static object."""
             children=[
                 dmc.Paper(
                     [
-                        dmc.Space(h=10),
+                        dmc.Space(h=20),
                         dmc.Center(dcc.Markdown(id="observability_title_elevation")),
                         html.Div(
                             dcc.Loading(
