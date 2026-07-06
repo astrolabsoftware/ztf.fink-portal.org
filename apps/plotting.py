@@ -56,6 +56,7 @@ import nifty_ls  # noqa: F401
 from plotly.subplots import make_subplots
 
 from scipy.optimize import curve_fit
+from sbpy.photometry import HG, HG1G2
 
 from app import app
 
@@ -4043,6 +4044,8 @@ def draw_sso_phasecurve(switch_func: str, object_sso) -> dict:
         """
     )
 
+    phase = np.deg2rad(pdf["Phase"].to_numpy())
+
     if switch_func == "HG1G2":
         fitfunc = func_hg1g2
         params = ["H", "G1", "G2"]
@@ -4051,7 +4054,7 @@ def draw_sso_phasecurve(switch_func: str, object_sso) -> dict:
             [30, 1, 1],
         )
         p0 = [15.0, 0.15, 0.15]
-        x = np.deg2rad(pdf["Phase"].to_numpy())
+        phase_funcs = [HG1G2._phi1(phase), HG1G2._phi2(phase), HG1G2._phi3(phase)]
     elif switch_func == "HG12":
         fitfunc = func_hg12
         params = ["H", "G12"]
@@ -4060,7 +4063,7 @@ def draw_sso_phasecurve(switch_func: str, object_sso) -> dict:
             [30, 1],
         )
         p0 = [15.0, 0.15]
-        x = np.deg2rad(pdf["Phase"].to_numpy())
+        phase_funcs = [HG1G2._phi1(phase), HG1G2._phi2(phase), HG1G2._phi3(phase)]
     elif switch_func == "HG":
         fitfunc = func_hg
         params = ["H", "G"]
@@ -4069,7 +4072,7 @@ def draw_sso_phasecurve(switch_func: str, object_sso) -> dict:
             [30, 1],
         )
         p0 = [15.0, 0.15]
-        x = np.deg2rad(pdf["Phase"].to_numpy())
+        phase_funcs = [HG._hgphi(phase, 1), HG._hgphi(phase, 2)]
     elif switch_func == "SHG1G2":
         fitfunc = func_shg1g2
         params = ["H", "G1", "G2", "R", "alpha0", "delta0"]
@@ -4078,8 +4081,10 @@ def draw_sso_phasecurve(switch_func: str, object_sso) -> dict:
             [30, 1, 1, 1, 2 * np.pi, np.pi / 2],
         )
         p0 = [15.0, 0.15, 0.15, 0.8, np.pi, 0.0]
-        x = [
-            np.deg2rad(pdf["Phase"].to_numpy()),
+        phase_funcs = [
+            HG1G2._phi1(phase),
+            HG1G2._phi2(phase),
+            HG1G2._phi3(phase),
             np.deg2rad(pdf["i:ra"].to_numpy()),
             np.deg2rad(pdf["i:dec"].to_numpy()),
         ]
@@ -4089,7 +4094,7 @@ def draw_sso_phasecurve(switch_func: str, object_sso) -> dict:
         params = ["<H>", "G1", "G2"]
         bounds = None
         p0 = None
-        x = np.deg2rad(pdf["Phase"].to_numpy())
+        phase_funcs = [HG1G2._phi1(phase), HG1G2._phi2(phase), HG1G2._phi3(phase)]
 
     layout = deepcopy(layout_sso_phasecurve)
     layout["title"]["text"] = "Reduced &#967;<sup>2</sup>: "
@@ -4196,15 +4201,12 @@ def draw_sso_phasecurve(switch_func: str, object_sso) -> dict:
             },
         )
 
-        if switch_func == "SHG1G2":
-            xx = np.array(x)[:, cond]
-        else:
-            xx = x[cond]
+        x = np.array(phase_funcs)[:, cond]
 
         figs.append(
             {
                 "x": pdf.loc[cond, "Phase"].to_numpy(),
-                "y": fitfunc(xx, *popt),
+                "y": fitfunc(*x, *popt),
                 "mode": "markers",
                 "name": f"fit {filters[f]}",
                 "marker": {
@@ -4219,7 +4221,7 @@ def draw_sso_phasecurve(switch_func: str, object_sso) -> dict:
         residual_figs.append(
             {
                 "x": pdf.loc[cond, "Phase"].to_numpy(),
-                "y": ydata.to_numpy() - fitfunc(xx, *popt),
+                "y": ydata.to_numpy() - fitfunc(*x, *popt),
                 "error_y": {
                     "type": "data",
                     "array": pdf.loc[cond, "i:sigmapsf"].to_numpy(),
