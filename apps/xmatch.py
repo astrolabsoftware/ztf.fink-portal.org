@@ -455,7 +455,7 @@ def submit_job(
             f"-topic_name={topic_name}",
             f"-ra_col={ra}",
             f"-dec_col={dec}",
-            f"-radius_arcsec={radius_col if radius_switch else radius}",
+            f"-radius_arcsec={radius_col['value'] if radius_switch else radius['value']}",
             f"-id_col={identifier}",
             "-catalog_filename={}".format(
                 "hdfs://{}///user/{}/{}".format(
