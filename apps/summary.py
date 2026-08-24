@@ -966,7 +966,7 @@ def store_query(name):
             json={"n_or_d": payload, "withEphem": True, "withResiduals": False},
         )
         # Drop bad values returned by Miriade
-        pdfsso = pdfsso.dropna(subset=['Dobs'])
+        pdfsso = pdfsso.dropna(subset=["Dobs"])
 
     else:
         pdfsso = pd.DataFrame()
