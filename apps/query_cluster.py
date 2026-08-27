@@ -646,7 +646,8 @@ def update_code_block(topic_name):
             partition = "finkclass"
 
         code_block = f"""
-fink_datatransfer \\
+# fink-client>=12.0.0
+finkctl transfer \\
     -topic {topic_name} \\
     -outdir {topic_name} \\
     -partitionby {partition} \\
