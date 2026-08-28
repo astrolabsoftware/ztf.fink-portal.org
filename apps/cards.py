@@ -876,7 +876,7 @@ def make_badge(text="", color=None, outline=None, tooltip=None, **kwargs):
     return badge
 
 
-def generate_tns_badge(oid):
+def generate_tns_badge(oid, get_icon=False):
     """Generate TNS badge
 
     Parameters
@@ -898,6 +898,8 @@ def generate_tns_badge(oid):
         output="json",
     )
 
+    icon = None
+
     if r != []:
         entries = [i["d:fullname"] for i in r]
         if len(entries) > 1:
@@ -914,7 +916,26 @@ def generate_tns_badge(oid):
         payload = r[index]
 
         if payload["d:type"] != "nan":
-            msg = "TNS: {} ({})".format(payload["d:fullname"], payload["d:type"])
+            tns_type = payload["d:type"].strip()
+            msg = "TNS: {} ({})".format(payload["d:fullname"], tns_type)
+
+            if tns_type.startswith("SN Ia"):
+                icon = "/assets/types/SNIa.png"
+            elif tns_type.startswith("SN"):
+                icon = "/assets/types/SNCC.png"
+            elif tns_type.startswith("SLSN"):
+                icon = "/assets/types/SLSN.png"
+            elif tns_type.startswith("TDE"):
+                icon = "/assets/types/TDE.png"
+
+            elif tns_type.startswith("AGN"): # ???
+                icon = "/assets/types/AGN.png"
+            elif tns_type.startswith("QSO"):
+                icon = "/assets/types/AGN.png"
+
+            elif tns_type.startswith("Kilonova"):
+                icon = "/assets/types/DDSN.png"
+
         else:
             msg = "TNS: {}".format(payload["d:fullname"])
         badge = make_badge(
@@ -925,11 +946,16 @@ def generate_tns_badge(oid):
     else:
         badge = None
 
+    if get_icon:
+        return badge, icon
+
     return badge
 
 
-def generate_generic_badges(row, variant="dot"):
+def generate_generic_badges(row, variant="dot", get_icon=False):
     """Operates on first row of a DataFrame, or directly on Series from pdf.iterrow()"""
+    icon = None
+
     if isinstance(row, pd.DataFrame):
         # for VSX, aggregate values
         vsx_label = get_multi_labels(row, "d:vsx", default="Unknown", to_avoid=["nan"])
@@ -952,6 +978,7 @@ def generate_generic_badges(row, variant="dot"):
                 tooltip="Nearest Solar System object",
             ),
         )
+        icon = "/assets/types/Asteroid.png"
 
     tracklet = row.get("d:tracklet")
     if tracklet and tracklet != "null":
@@ -1032,6 +1059,9 @@ def generate_generic_badges(row, variant="dot"):
             ),
         )
 
+    if get_icon:
+        return badges, icon
+
     return badges
 
 
@@ -1096,29 +1126,63 @@ def card_id1(object_data, object_uppervalid, object_upper):
     else:
         nupper = 0
 
+    icon = None
     badges = []
-    for c in np.unique(pdf["v:classification"]):
+    used = set()
+    # We need to iterate latest-to-oldest, so no unique(), alas
+    for c in pdf["v:classification"]:
         if c in simbad_types:
             color = class_colors["Simbad"]
+
+            if icon is None: # Use latest only
+                # Fallback to default icon on unknown/unsupported latest class
+                icon = "/assets/Fink_SecondaryLogo_WEB.png"
+
+                if c.startswith("EB*") or c.startswith("Candidate_EB*"):
+                    icon = "/assets/types/EclBin.png"
+
+                for _ in ["AGN", "QSO", "QVV", "LINER", "BLLac", "Blazar", "Seyfert"]:
+                    if c.startswith(_):
+                        icon = "/assets/types/AGN.png"
+
+                for _ in [
+                        "YSO", "Candidate_YSO",
+                        "pMS", "Candidate_pMS",
+                        "TTau", "Candidate_TTau",
+                        "Orion_V", "FUOr", "HH",
+                        "Eruptive", "Outflow", "outflow"
+                ]:
+                    if c.startswith(_):
+                        icon = "/assets/types/YSO.png"
+
         elif c in class_colors.keys():
             color = class_colors[c]
         else:
             # Sometimes SIMBAD mess up names :-)
             color = class_colors["Simbad"]
 
-        badges.append(
-            make_badge(
-                c,
-                color=color,
-                tooltip="Fink classification",
-            ),
-        )
+        if c not in used:
+            used.add(c)
 
-    tns_badge = generate_tns_badge(get_first_value(pdf, "i:objectId"))
+            badges.append(
+                make_badge(
+                    c,
+                    color=color,
+                    tooltip="Fink classification",
+                ),
+            )
+
+    tns_badge, tns_icon = generate_tns_badge(get_first_value(pdf, "i:objectId"), get_icon=True)
     if tns_badge is not None:
         badges.append(tns_badge)
+    if tns_icon is not None:
+        # TNS classification takes precedence over Simbad
+        icon = tns_icon
 
-    badges += generate_generic_badges(pdf, variant="dot")
+    generic_badges, generic_icon = generate_generic_badges(pdf, variant="dot", get_icon=True)
+    badges += generic_badges
+    if icon is None:
+        icon = generic_icon
 
     meta_name = generate_metadata_name(get_first_value(pdf, "i:objectId"))
     if meta_name is not None:
@@ -1138,7 +1202,16 @@ def card_id1(object_data, object_uppervalid, object_upper):
         get_first_value(pdf, "i:ra"), get_first_value(pdf, "i:dec"), unit="deg"
     )
 
-    c1 = dmc.Avatar(src="/assets/Fink_SecondaryLogo_WEB.png", size="lg")
+    if icon is not None:
+        c1 = dmc.Avatar(
+            src=icon, size="xl",
+            #radius="lg",
+            variant="filled",
+            # styles={"image": {"padding": "5px"}}
+        )
+    else:
+        c1 = dmc.Avatar(src="/assets/Fink_SecondaryLogo_WEB.png", size="xl")
+
     c2 = dmc.Title(
         objectid, order=1, style={"color": "#15284F", "wordWrap": "break-word"}
     )
@@ -1147,6 +1220,7 @@ def card_id1(object_data, object_uppervalid, object_upper):
             dmc.Grid(
                 [dmc.GridCol(c1, span="content"), dmc.GridCol(c2, span="auto")],
                 gutter="xs",
+                align="center",
             ),
             extra_div,
             html.Div(badges),
