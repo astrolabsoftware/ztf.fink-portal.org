@@ -302,6 +302,14 @@ def generate_spark_paths(startDate, stopDate, basePath):
     return paths
 
 
+def is_float(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
+
 def perform_xmatch(spark, df, catalog_filename, ra_col, dec_col, id_col, radius_arcsec):
     """"""
     df_other = spark.read.format("parquet").load(catalog_filename)
@@ -334,7 +342,7 @@ def perform_xmatch(spark, df, catalog_filename, ra_col, dec_col, id_col, radius_
 
         if radius_arcsec in pdf_cat.columns:
             radius_col = pdf_cat[radius_arcsec]
-        elif radius_arcsec.isdecimal():
+        elif is_float(radius_arcsec):
             radius_col = pd.Series([float(radius_arcsec)])
         else:
             # FIXME: log error message
@@ -529,7 +537,7 @@ if __name__ == "__main__":
     parser.add_argument("-stopDate")
     parser.add_argument("-ra_col")
     parser.add_argument("-dec_col")
-    parser.add_argument("-radius_arcsec")
+    parser.add_argument("-radius_arcsec", type=str)
     parser.add_argument("-id_col")
     parser.add_argument("-catalog_filename")
     parser.add_argument("-ffield", action="append")
