@@ -321,6 +321,8 @@ def tab5_content(object_soo):
     but $G_1$ and $G_2$ remain the same for all ([Colazo et al 2025](https://arxiv.org/abs/2503.05412)).
     This means we fit $N+2$ parameters, where $N$ is the number of oppositions. Here we display the
     mean value for $H$ per band.
+
+    **SOCCA**: The model `SOCCA` ([Xenos et al 2026](https://arxiv.org/abs/2606.17734)) - Shape, Orientation and Colors Combined approach for Asteroids - extends the HG1G2 formalism by incorporating the projected surface of a rotating triaxial ellipsoid. The model jointly fits multi-band photometry, and includes a dedicated treatment of rotational period determination.
     """
 
     tab3 = dbc.Row(
@@ -328,7 +330,12 @@ def tab5_content(object_soo):
             dbc.Col(
                 [
                     dmc.Space(h=10),
-                    html.Div(id="sso_phasecurve"),
+                    dcc.Loading(
+                        html.Div(id="sso_phasecurve"),
+                        color="orange",
+                        type="circle",
+                        overlay_style={"visibility": "visible", "filter": "blur(2px)"},
+                    ),
                     html.Br(),
                     dmc.Stack(
                         [
@@ -337,6 +344,7 @@ def tab5_content(object_soo):
                                     [
                                         dmc.Radio(k, value=k, color="orange")
                                         for k in [
+                                            "SOCCA",
                                             "SHG1G2",
                                             "sfHG1G2",
                                             "HG1G2",

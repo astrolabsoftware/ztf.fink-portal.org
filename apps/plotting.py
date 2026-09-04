@@ -50,7 +50,12 @@ from fink_utils.sso.spins import (
     func_hg1g2,
     func_shg1g2,
     func_hg12,
+    func_socca,
 )
+from fink_utils.sso.utils import compute_light_travel_correction
+from fink_utils.sso.cleaning import dxy_cleaning, iterative_cleaning
+from asteroid_spinprops.ssolib import modelfit
+
 from astropy.timeseries import LombScargleMultiband
 import nifty_ls  # noqa: F401
 from plotly.subplots import make_subplots
@@ -3999,6 +4004,92 @@ def draw_sso_astrometry(pdf) -> dict:
     return card
 
 
+def sanitize_dict(outdic):
+    """Replace arrays with lists"""
+    outdic2 = {}
+    for k, v in outdic.items():
+        if isinstance(v, np.ndarray):
+            outdic2.update({k: list(v)})
+        else:
+            outdic2.update({k: v})
+    return outdic2
+
+
+def apply_socca(pdf):
+    """ """
+    jd_lt = compute_light_travel_correction(pdf["i:jd"], pdf["Dobs"])
+    np.random.seed(seed=3)
+    pdf_socca = pd.DataFrame(
+        {
+            "cmred": pdf["i:magpsf_red"],
+            "csigmapsf": pdf["i:sigmapsf"],
+            "Phase": pdf["Phase"],
+            "cfid": pdf["i:fid"],
+            "ra": pdf["i:ra"],
+            "dec": pdf["i:dec"],
+            "cjd": jd_lt,
+            "i:raephem": pdf["RA"],
+            "i:decephem": pdf["DEC"],
+            "ra_s": pdf["RA_h"],
+            "dec_s": pdf["DEC_h"],
+            "cdx": np.random.normal(size=len(pdf)),
+            "cdy": np.random.normal(size=len(pdf)),
+            "Dhelio": pdf["Dhelio"],
+        }
+    )
+    pdf_socca = pdf_socca.sort_values("cjd")
+
+    # Clean data in-place
+    pdf_socca["dxy"] = np.sqrt(pdf_socca["cdx"] ** 2 + pdf_socca["cdy"] ** 2)
+    pdf_socca, _ = dxy_cleaning(
+        pdf_socca,
+        pdf_socca["dxy"],
+        pdf_socca["cmred"],
+        threshold=0.95,
+    )
+
+    pdf_socca, _ = iterative_cleaning(
+        pdf_socca,
+        pdf_socca["cmred"],
+        pdf_socca["csigmapsf"],
+        pdf_socca["Phase"],
+        pdf_socca["cfid"],
+        pdf_socca["ra"],
+        pdf_socca["dec"],
+    )
+
+    # Wrap columns inplace
+    pdf_transposed = pd.DataFrame(
+        {colname: [pdf_socca[colname].to_numpy()] for colname in pdf_socca.columns}
+    )
+
+    base_kwargs = dict(
+        use_angles=True,
+        use_filter_dependent=True,
+        use_phase=True,
+        use_shape=True,
+    )
+
+    current_kwargs = base_kwargs.copy()
+
+    outdic = modelfit.get_fit_params(
+        data=pdf_transposed,
+        flavor="SOCCA",
+        shg1g2_constrained=True,
+        period_blind=True,
+        pole_blind=False,
+        period_in=None,
+        period_quality_flag=True,
+        terminator=True,
+        time_me=True,
+        remap=True,
+        remap_kwargs=current_kwargs,
+    )
+
+    outdic = sanitize_dict(outdic)
+    return outdic
+
+
 @app.callback(
     Output("sso_phasecurve", "children"),
     [
@@ -4046,7 +4137,20 @@ def draw_sso_phasecurve(switch_func: str, object_sso) -> dict:
 
     phase = np.deg2rad(pdf["Phase"].to_numpy())
 
-    if switch_func == "HG1G2":
+    if switch_func == "SOCCA":
+        fitfunc = func_socca
+        params = ["H", "G1", "G2", "alpha0", "delta0", "period", "a_b", "a_c", "phi0"]
+        bounds = None
+        p0 = None
+        phase_funcs = [
+            HG1G2._phi1(phase),
+            HG1G2._phi2(phase),
+            HG1G2._phi3(phase),
+            np.deg2rad(pdf["i:ra"].to_numpy()),
+            np.deg2rad(pdf["i:dec"].to_numpy()),
+            compute_light_travel_correction(pdf["i:jd"], pdf["Dobs"]),
+        ]
+    elif switch_func == "HG1G2":
         fitfunc = func_hg1g2
         params = ["H", "G1", "G2"]
         bounds = (
@@ -4100,22 +4204,33 @@ def draw_sso_phasecurve(switch_func: str, object_sso) -> dict:
     layout["title"]["text"] = "Reduced &#967;<sup>2</sup>: "
 
     # Multi-band fit
-    outdic = estimate_sso_params(
-        magpsf_red=pdf["i:magpsf_red"].to_numpy(),
-        sigmapsf=pdf["i:sigmapsf"].to_numpy(),
-        phase=np.deg2rad(pdf["Phase"].to_numpy()),
-        filters=pdf["i:fid"].to_numpy(),
-        ra=np.deg2rad(pdf["i:ra"].to_numpy()),
-        dec=np.deg2rad(pdf["i:dec"].to_numpy()),
-        jd=pdf["i:jd"].to_numpy(),
-        p0=p0,
-        bounds=bounds,
-        model=switch_func,
-        normalise_to_V=False,
-        ssnamenr=pdf["i:ssnamenr"].to_numpy()[0],
-    )
-    if outdic["fit"] != 0:
-        return dbc.Alert("The fitting procedure could not converge.", color="danger")
+    if switch_func == "SOCCA":
+        outdic = apply_socca(pdf)
+        failed = np.sum([i.startswith("Failed") for i in outdic])
+        if failed > 0:
+            return dbc.Alert(
+                "The fitting procedure could not converge: {}.".format(outdic),
+                color="danger",
+            )
+    else:
+        outdic = estimate_sso_params(
+            magpsf_red=pdf["i:magpsf_red"].to_numpy(),
+            sigmapsf=pdf["i:sigmapsf"].to_numpy(),
+            phase=np.deg2rad(pdf["Phase"].to_numpy()),
+            filters=pdf["i:fid"].to_numpy(),
+            ra=np.deg2rad(pdf["i:ra"].to_numpy()),
+            dec=np.deg2rad(pdf["i:dec"].to_numpy()),
+            jd=pdf["i:jd"].to_numpy(),
+            p0=p0,
+            bounds=bounds,
+            model=switch_func,
+            normalise_to_V=False,
+            ssnamenr=pdf["i:ssnamenr"].to_numpy()[0],
+        )
+        if outdic["fit"] != 0:
+            return dbc.Alert(
+                "The fitting procedure could not converge.", color="danger"
+            )
 
     if switch_func == "sfHG1G2":
         # H mean for each filter
@@ -4156,12 +4271,12 @@ def draw_sso_phasecurve(switch_func: str, object_sso) -> dict:
     for i, f in enumerate(filts):
         cond = pdf["i:fid"] == f
         popt = []
-        for pindex, param in enumerate(params):
-            # rad2deg
-            if pindex >= 3:
-                suffix = ""
-            else:
+        for param in params:
+            # filter dependent
+            if param in ["<H>", "H", "G1", "G2", "G12"]:
                 suffix = f"_{f}"
+            else:
+                suffix = ""
 
             loc = df_table[param].index == filters[f]
             df_table.loc[loc, param] = "{:.2f} &plusmn; {:.2f}".format(
@@ -4169,10 +4284,11 @@ def draw_sso_phasecurve(switch_func: str, object_sso) -> dict:
                 outdic["err_" + param + suffix],
             )
 
-            if pindex <= 3:
-                popt.append(outdic[param + suffix])
-            else:
+            # rad2deg
+            if param in ["alpha0", "delta0"]:
                 popt.append(np.deg2rad(outdic[param + suffix]))
+            else:
+                popt.append(outdic[param + suffix])
 
         ydata = pdf.loc[cond, "i:magpsf_red"]
 
