@@ -54,7 +54,7 @@ executing==2.1.0
 faust-cchardet==2.1.19
 fink-filters==7.0
 fink-spins==0.3.8
-fink-utils==0.72.0
+fink-utils==0.77.0
 finufft==2.3.1
 Flask==3.0.3
 Flask-Compress==1.17
@@ -184,3 +184,4 @@ yarl==1.18.3
 zipp==3.21.0
 zstandard==0.23.0
 git+https://github.com/astrolabsoftware/fink-science@8.52.0
+git+https://gitlab.com/odysseas_xenos/asteroid-spinprops@91d9b03540645c9bc7dcde1ac5b3c8bc9a430a11
