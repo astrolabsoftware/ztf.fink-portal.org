@@ -1021,7 +1021,6 @@ def generate_generic_badges(row, variant="dot", get_icon=False):
             ),
         )
         icon = "/assets/types/Variable.png"
-        print('vsx:', vsx)
 
     # Nearby objects
     distnr = row.get("i:distnr")
