@@ -990,6 +990,7 @@ def generate_generic_badges(row, variant="dot", get_icon=False):
                 tooltip="Fink detected tracklet",
             ),
         )
+        icon = "/assets/types/Art.Sat.png"
 
     gcvs = row.get("d:gcvs")
     if gcvs and gcvs != "Unknown":
@@ -1001,6 +1002,7 @@ def generate_generic_badges(row, variant="dot", get_icon=False):
                 tooltip="General Catalogue of Variable Stars classification",
             ),
         )
+        icon = "/assets/types/Variable.png"
 
     vsx = row.get("d:vsx")
     if (
@@ -1018,6 +1020,8 @@ def generate_generic_badges(row, variant="dot", get_icon=False):
                 tooltip="AAVSO VSX classification",
             ),
         )
+        icon = "/assets/types/Variable.png"
+        print('vsx:', vsx)
 
     # Nearby objects
     distnr = row.get("i:distnr")
@@ -1129,17 +1133,20 @@ def card_id1(object_data, object_uppervalid, object_upper):
     icon = None
     badges = []
     used = set()
+    is_latest_simbad = True
     # We need to iterate latest-to-oldest, so no unique(), alas
     for c in pdf["v:classification"]:
         if c in simbad_types:
             color = class_colors["Simbad"]
 
-            if icon is None: # Use latest only
-                # Fallback to default icon on unknown/unsupported latest class
-                icon = "/assets/Fink_SecondaryLogo_WEB.png"
+            if icon is None and is_latest_simbad: # Use latest only
+                is_latest_simbad = False
 
-                if c.startswith("EB*") or c.startswith("Candidate_EB*"):
+                if c.startswith("EB*") or c.startswith("Candidate_EB*") or c.startswith("EclBin"):
                     icon = "/assets/types/EclBin.png"
+
+                elif c.startswith("Variable*") or c.startswith("V*"):
+                    icon = "/assets/types/Variable.png"
 
                 for _ in ["AGN", "QSO", "QVV", "LINER", "BLLac", "Blazar", "Seyfert"]:
                     if c.startswith(_):
@@ -1205,12 +1212,12 @@ def card_id1(object_data, object_uppervalid, object_upper):
     if icon is not None:
         c1 = dmc.Avatar(
             src=icon, size="xl",
-            #radius="lg",
+            radius="xs",
             variant="filled",
             # styles={"image": {"padding": "5px"}}
         )
     else:
-        c1 = dmc.Avatar(src="/assets/Fink_SecondaryLogo_WEB.png", size="xl")
+        c1 = dmc.Avatar(src="/assets/types/Unknown.png", size="xl", radius="xs", variant="filled")
 
     c2 = dmc.Title(
         objectid, order=1, style={"color": "#15284F", "wordWrap": "break-word"}
