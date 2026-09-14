@@ -26,6 +26,11 @@ exclude = [
     "node_modules",
     "site-packages",
     "venv",
+    "performances",
+    "debug_names",
+    "debug",
+    "magicbar",
+    "*.ipynb",
 ]
 
 # Same as Black.
