@@ -115,3 +115,4 @@ ENV/
 cache/
 FinkBrowser.log
 Lomikel.log
+*.parquet

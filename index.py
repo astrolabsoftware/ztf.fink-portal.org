@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import io
+import logging
 
 import dash
 from dash import (
@@ -39,6 +40,8 @@ from dash_autocomplete_input import AutocompleteInput
 
 from app import server
 from app import app
+
+logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 
 from apps import summary, about, statistics, query_cluster, gw, xmatch
 
@@ -1825,6 +1828,16 @@ navbar = dmc.AppShellHeader(
                                             "color": "gray",
                                         },
                                         href="/stats",
+                                        size="sm",
+                                    ),
+                                    dmc.Anchor(
+                                        "AI",
+                                        style={
+                                            "textTransform": "capitalize",
+                                            "textDecoration": "none",
+                                            "color": "gray",
+                                        },
+                                        href="/download",
                                         size="sm",
                                     ),
                                 ],

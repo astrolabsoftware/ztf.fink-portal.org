@@ -14,7 +14,9 @@
 # limitations under the License.
 import urllib.parse
 import importlib
+import logging
 import pkgutil
+import traceback
 import base64
 import yaml
 import gzip
@@ -1104,3 +1106,110 @@ def create_datatransfer_schema_table(cutouts_allowed=True):
             table_candidate,
         ]
     )
+
+
+def _fetch_model_aliases(mlflow_uri, auth, model_names):
+    """Fetch aliases for a set of registered models, keyed by (name, version).
+
+    `model-versions/search` does not reliably return the `aliases` field
+    (a known MLflow limitation), but `registered-models/get` does — so aliases
+    are looked up per registered model name instead of per version.
+    """
+    aliases_by_name_version = {}
+    for name in model_names:
+        try:
+            r = requests.get(
+                f"{mlflow_uri}/api/2.0/mlflow/registered-models/get",
+                params={"name": name},
+                auth=auth,
+                timeout=5,
+            )
+            if r.status_code != 200:
+                logging.warning(
+                    "[MLflow] registered-models/get %s → HTTP %s", name, r.status_code
+                )
+                continue
+        except Exception:
+            logging.warning(
+                "[MLflow] Could not fetch aliases for %s\n%s",
+                name,
+                traceback.format_exc(),
+            )
+            continue
+
+        for entry in r.json().get("registered_model", {}).get("aliases", []):
+            key = (name, entry["version"])
+            aliases_by_name_version.setdefault(key, []).append(entry["alias"])
+
+    return aliases_by_name_version
+
+
+def get_available_models():
+    """Fetch MLflow model versions ready for inference: both images built and an alias set.
+
+    A version is only included if the CI has already pushed both the
+    preprocessing and model images (tags `preprocessing_image` /
+    `model_image`) and an alias (champion, staging, challenger…) has been
+    assigned — filtering on alias keeps the selection list short.
+
+    Returns
+    -------
+    list of dict
+        Grouped format expected by dmc.MultiSelect:
+        [{"group": alias, "items": [{"value": "name@version", "label": "..."}]}]
+    """
+    config = yaml.load(open("config_inference.yml"), yaml.Loader)
+    mlflow_uri = (config.get("MLFLOW_TRACKING_URI") or "").rstrip("/")
+    username = config.get("MLFLOW_TRACKING_USERNAME") or None
+    password = config.get("MLFLOW_TRACKING_PASSWORD") or None
+    auth = (username, password) if username and password else None
+
+    try:
+        r = requests.get(
+            f"{mlflow_uri}/api/2.0/mlflow/model-versions/search",
+            params={"max_results": 1000},
+            auth=auth,
+            timeout=5,
+        )
+        if r.status_code != 200:
+            logging.warning(
+                "[MLflow] model-versions/search → HTTP %s\n%s", r.status_code, r.text
+            )
+            return []
+        versions = r.json().get("model_versions", [])
+    except Exception:
+        logging.warning(
+            "[MLflow] Could not reach %s\n%s", mlflow_uri, traceback.format_exc()
+        )
+        return []
+
+    ready_versions = [
+        v
+        for v in versions
+        if {"preprocessing_image", "model_image"}
+        <= {t["key"] for t in v.get("tags", [])}
+    ]
+    aliases_by_name_version = _fetch_model_aliases(
+        mlflow_uri, auth, {v["name"] for v in ready_versions}
+    )
+
+    alias_order = ["champion", "staging", "challenger"]
+    groups: dict = {}
+    for v in ready_versions:
+        name, version = v["name"], v["version"]
+        aliases = aliases_by_name_version.get((name, version), [])
+        if not aliases:
+            continue
+        group = next((a for a in alias_order if a in aliases), aliases[0])
+        groups.setdefault(group, []).append(
+            {
+                "value": f"{name}@{version}",
+                "label": f"{name} v{version} ({group}) ",
+            }
+        )
+
+    ordered = [{"group": g, "items": groups[g]} for g in alias_order if g in groups]
+    for g, items in groups.items():
+        if g not in alias_order:
+            ordered.append({"group": g, "items": items})
+    return ordered

@@ -1,0 +1,35 @@
+# RBAC for the Fink portal pod to:
+#   - list Services (K8s service discovery by label)
+#   - create/get Jobs (on-demand inference jobs)
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fink-portal
+  namespace: fink
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: fink-portal-inference
+  namespace: fink
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fink-portal-inference
+  namespace: fink
+subjects:
+  - kind: ServiceAccount
+    name: fink-portal
+    namespace: fink
+roleRef:
+  kind: Role
+  name: fink-portal-inference
+  apiGroup: rbac.authorization.k8s.io

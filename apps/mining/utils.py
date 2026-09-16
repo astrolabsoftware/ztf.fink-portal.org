@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
-from datetime import date, timedelta
+import logging
+import traceback
+import yaml
+from datetime import date, timedelta, datetime, timezone
 import requests
 import numpy as np
 import pandas as pd
@@ -366,3 +369,209 @@ def estimate_alert_number_elasticc(
         count = dic["basic:sci"]
 
     return dic["basic:sci"], count
+
+
+def _discover_component_image(model_name, version, component):
+    """Read preprocessing_image or model_image tag from MLflow model version."""
+    config = yaml.load(open("config_inference.yml"), yaml.Loader)
+    mlflow_uri = (config.get("MLFLOW_TRACKING_URI") or "").rstrip("/")
+    username = config.get("MLFLOW_TRACKING_USERNAME") or None
+    password = config.get("MLFLOW_TRACKING_PASSWORD") or None
+    auth = (username, password) if username and password else None
+
+    tag_key = "preprocessing_image" if component == "preprocessing" else "model_image"
+    try:
+        r = requests.get(
+            f"{mlflow_uri}/api/2.0/mlflow/model-versions/get",
+            params={"name": model_name, "version": version},
+            auth=auth,
+            timeout=5,
+        )
+        if r.status_code != 200:
+            logging.warning(
+                "[MLflow] model-versions/get %s@%s → HTTP %s",
+                model_name,
+                version,
+                r.status_code,
+            )
+            return None
+        mv = r.json().get("model_version", {})
+        tags = {t["key"]: t["value"] for t in mv.get("tags", [])}
+        image = tags.get(tag_key)
+        if not image:
+            logging.warning(
+                "[MLflow] Tag '%s' missing for %s@%s", tag_key, model_name, version
+            )
+        return image
+    except Exception:
+        logging.warning(
+            "[MLflow] Could not get image tag for %s@%s\n%s",
+            model_name,
+            version,
+            traceback.format_exc(),
+        )
+        return None
+
+
+def create_k8s_inference_jobs(
+    input_topic, output_topic, job_id, selected_models, inf_config
+):
+    """Create two K8s Jobs per selected model: preprocessing + model.
+
+    Flow per model:
+      input_topic (AVRO) → preprocessing Job → intermediate (JSON) → model Job → output_topic (JSON)
+    """
+    namespace = inf_config.get("KUBE_NAMESPACE", "fink")
+    parallelism = int(inf_config.get("INFERENCE_PARALLELISM", 1))
+    dt_config = yaml.load(open("config_datatransfer.yml"), yaml.Loader)
+
+    from kubernetes import client as k8s_client, config as k8s_config
+
+    try:
+        k8s_config.load_incluster_config()
+    except Exception:
+        k8s_config.load_kube_config()
+    batch_v1 = k8s_client.BatchV1Api()
+
+    protocol = dt_config.get("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT")
+    kafka_creds = [
+        {
+            "name": "KAFKA_BOOTSTRAP_SERVERS",
+            "value": dt_config["KAFKA_BOOTSTRAP_SERVERS"],
+        },
+        {"name": "KAFKA_SECURITY_PROTOCOL", "value": protocol},
+    ]
+    if protocol not in ("PLAINTEXT", "SSL"):
+        kafka_creds += [
+            {
+                "name": "KAFKA_SASL_USERNAME",
+                "value": dt_config.get("KAFKA_SASL_USERNAME", ""),
+            },
+            {
+                "name": "KAFKA_SASL_PASSWORD",
+                "value": dt_config.get("KAFKA_SASL_PASSWORD", ""),
+            },
+            {
+                "name": "KAFKA_SASL_MECHANISM",
+                "value": dt_config.get("KAFKA_SASL_MECHANISM", "PLAIN"),
+            },
+        ]
+
+    errors = []
+    created = []
+
+    for model_str in selected_models:
+        parts = model_str.split("@")
+        model_name = parts[0]
+        version = parts[1] if len(parts) > 1 else "1"
+        model_safe = (
+            model_str.replace("@", "-").replace(".", "-").replace("_", "-").lower()
+        )
+        ts = datetime.now(timezone.utc).microsecond
+
+        inter_topic = f"fink_ai_pre_{model_safe}_{job_id}"
+
+        pre_image = _discover_component_image(model_name, version, "preprocessing")
+        if not pre_image:
+            errors.append(f"No preprocessing image found for '{model_name}@{version}'")
+            continue
+
+        pre_job = {
+            "apiVersion": "batch/v1",
+            "kind": "Job",
+            "metadata": {"name": f"inf-pre-{model_safe}-{ts}", "namespace": namespace},
+            "spec": {
+                "ttlSecondsAfterFinished": 3600,
+                "parallelism": parallelism,
+                "completions": parallelism,
+                "template": {
+                    "spec": {
+                        "restartPolicy": "Never",
+                        "containers": [
+                            {
+                                "name": "preprocessing",
+                                "image": pre_image,
+                                "env": kafka_creds
+                                + [
+                                    {"name": "KAFKA_ENABLED", "value": "true"},
+                                    {"name": "INPUT_TOPIC", "value": input_topic},
+                                    {"name": "OUTPUT_TOPIC", "value": inter_topic},
+                                    {"name": "INPUT_FORMAT", "value": "avro"},
+                                    {
+                                        "name": "SCHEMA_TOPIC",
+                                        "value": f"{input_topic}_schema",
+                                    },
+                                    {"name": "OUTPUT_FORMAT", "value": "json"},
+                                    {"name": "SKIP_CUTOUTS", "value": "true"},
+                                    {"name": "AUTO_OFFSET_RESET", "value": "earliest"},
+                                    {
+                                        "name": "CONSUMER_GROUP_ID",
+                                        "value": f"fink-ai-pre-{model_safe}-{job_id}",
+                                    },
+                                    {"name": "IDLE_TIMEOUT_SECONDS", "value": "300"},
+                                ],
+                            }
+                        ],
+                    }
+                },
+            },
+        }
+
+        model_image = _discover_component_image(model_name, version, "model")
+        if not model_image:
+            errors.append(f"No model image found for '{model_name}@{version}'")
+            continue
+
+        model_job = {
+            "apiVersion": "batch/v1",
+            "kind": "Job",
+            "metadata": {
+                "name": f"inf-model-{model_safe}-{ts}",
+                "namespace": namespace,
+            },
+            "spec": {
+                "ttlSecondsAfterFinished": 3600,
+                "parallelism": parallelism,
+                "completions": parallelism,
+                "template": {
+                    "spec": {
+                        "restartPolicy": "Never",
+                        "containers": [
+                            {
+                                "name": "model",
+                                "image": model_image,
+                                "env": kafka_creds
+                                + [
+                                    {"name": "KAFKA_ENABLED", "value": "true"},
+                                    {"name": "INPUT_TOPIC", "value": inter_topic},
+                                    {"name": "OUTPUT_TOPIC", "value": output_topic},
+                                    {"name": "INPUT_FORMAT", "value": "json"},
+                                    {"name": "OUTPUT_FORMAT", "value": "json"},
+                                    {"name": "AUTO_OFFSET_RESET", "value": "earliest"},
+                                    {
+                                        "name": "CONSUMER_GROUP_ID",
+                                        "value": f"fink-ai-model-{model_safe}-{job_id}",
+                                    },
+                                    {"name": "BRIDGE_NAME", "value": model_str},
+                                    {"name": "IDLE_TIMEOUT_SECONDS", "value": "900"},
+                                ],
+                            }
+                        ],
+                    }
+                },
+            },
+        }
+
+        try:
+            batch_v1.create_namespaced_job(namespace=namespace, body=pre_job)
+            batch_v1.create_namespaced_job(namespace=namespace, body=model_job)
+            created.append(model_str)
+        except Exception:
+            logging.warning(
+                "[K8s] Job creation failed for %s\n%s",
+                model_str,
+                traceback.format_exc(),
+            )
+            errors.append(f"K8s Job creation failed for {model_str}")
+
+    return created, errors

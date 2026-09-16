@@ -1,0 +1,12 @@
+MLFLOW_TRACKING_URI: https://mlflow.example.org
+MLFLOW_TRACKING_USERNAME: username
+MLFLOW_TRACKING_PASSWORD: password
+
+KUBE_NAMESPACE: fink
+K8S_ONLY_MODE: true
+
+# Number of parallel pods per inference Job (preprocessing and model).
+# Pods of the same Job share the same CONSUMER_GROUP_ID, so Kafka splits the
+# topic's partitions across them automatically. Capped by the topic's
+# partition count — extra replicas beyond that just sit idle.
+INFERENCE_PARALLELISM: 2
