@@ -126,12 +126,12 @@ def add_classification(spark, df, path_to_tns):
 
         # create catalogs
         catalog_ztf = SkyCoord(
-            ra=np.array(ra, dtype=np.float) * u.degree,
-            dec=np.array(dec, dtype=np.float) * u.degree,
+            ra=np.array(ra, dtype=float) * u.degree,
+            dec=np.array(dec, dtype=float) * u.degree,
         )
         catalog_tns = SkyCoord(
-            ra=np.array(ra2, dtype=np.float) * u.degree,
-            dec=np.array(dec2, dtype=np.float) * u.degree,
+            ra=np.array(ra2, dtype=float) * u.degree,
+            dec=np.array(dec2, dtype=float) * u.degree,
         )
 
         # cross-match
@@ -332,12 +332,12 @@ def perform_xmatch(spark, df, catalog_filename, ra_col, dec_col, id_col, radius_
 
         # create catalogs
         catalog_ztf = SkyCoord(
-            ra=np.array(ra, dtype=np.float) * u.degree,
-            dec=np.array(dec, dtype=np.float) * u.degree,
+            ra=np.array(ra, dtype=float) * u.degree,
+            dec=np.array(dec, dtype=float) * u.degree,
         )
         catalog_other = SkyCoord(
-            ra=np.array(ra2, dtype=np.float) * u.degree,
-            dec=np.array(dec2, dtype=np.float) * u.degree,
+            ra=np.array(ra2, dtype=float) * u.degree,
+            dec=np.array(dec2, dtype=float) * u.degree,
         )
 
         if radius_arcsec in pdf_cat.columns:
