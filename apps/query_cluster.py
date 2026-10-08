@@ -1,5 +1,7 @@
 import dash_mantine_components as dmc
+import logging
 import textwrap
+import traceback
 
 import numpy as np
 import pandas as pd
@@ -19,12 +21,14 @@ from apps.mining.utils import (
     upload_file_hdfs,
     estimate_alert_number_ztf,
     estimate_alert_number_elasticc,
+    create_k8s_inference_jobs,
 )
 from apps.utils import extract_configuration
 from apps.utils import format_field_for_data_transfer
 from apps.utils import create_datatransfer_schema_table
 from apps.utils import create_datatransfer_livestream_table
 from apps.utils import query_and_order_statistics
+from apps.utils import get_available_models
 from apps.plotting import COLORS_ZTF
 
 import pkgutil
@@ -55,7 +59,7 @@ elasticc_v2p1_dates["date"] = elasticc_v2p1_dates["date"].astype("str")
 
 
 min_step = 0
-max_step = 4
+max_step = 5
 
 
 def date_tab():
@@ -246,6 +250,73 @@ snn_snia_vs_nonia > 0.5;
         id="filter_number_tab",
     )
     return tab
+
+
+def ai_inference_tab():
+    models = get_available_models()
+    ci_url = "https://github.com/Farid841/pre_processing-container-generator-from-mlflow/actions"
+    mlflow_url = "https://mlflow.fink-broker.org"
+
+    notice = (
+        dmc.Alert(
+            [
+                "No models available yet. Check the ",
+                dmc.Anchor("CI build status", href=ci_url, target="_blank"),
+                " or the model alias in ",
+                dmc.Anchor("MLflow", href=mlflow_url, target="_blank"),
+                ".",
+            ],
+            color="orange",
+            icon=DashIconify(icon="tabler:alert-circle"),
+        )
+        if not models
+        else dmc.Alert(
+            "Optional: leave empty to skip AI.",
+            color="blue",
+            icon=DashIconify(icon="tabler:info-circle"),
+        )
+    )
+
+    return html.Div(
+        [
+            dmc.Space(h=50),
+            dmc.Divider(variant="solid", label="Run AI (optional, ZTF only)"),
+            dmc.Space(h=20),
+            dmc.MultiSelect(
+                label="AI Models",
+                description=[
+                    "Select one or more models. Model missing? Check its ",
+                    dmc.Anchor(
+                        "build status",
+                        href=ci_url,
+                        size="xs",
+                        target="_blank",
+                    ),
+                    ".",
+                ],
+                placeholder="start typing...",
+                id="inf-model-select",
+                data=models,
+                searchable=True,
+                clearable=True,
+            ),
+            dmc.Space(h=15),
+            notice,
+        ],
+        id="ai_inference_tab",
+    )
+
+
+@app.callback(
+    Output("inf-model-select", "disabled"),
+    Output("inf-model-select", "value"),
+    Input("trans_datasource", "value"),
+)
+def toggle_ai_models(trans_datasource):
+    """AI inference is only available for ZTF"""
+    if trans_datasource == "ZTF":
+        return False, no_update
+    return True, []
 
 
 def filter_content_tab():
@@ -634,27 +705,26 @@ def gauge_meter(
 
 
 @app.callback(
-    Output("code_block", "code"),
+    Output("commands-section", "children"),
     Input("topic_name", "children"),
+    Input("inf-topic-store", "children"),
     prevent_initial_call=True,
 )
-def update_code_block(topic_name):
-    if topic_name is not None and topic_name != "":
-        if "elasticc" in topic_name:
-            partition = "classId"
-        else:
-            partition = "finkclass"
-
-        code_block = f"""
-# fink-client>=12.0.0
-finkctl transfer \\
-    -topic {topic_name} \\
-    -outdir {topic_name} \\
-    -partitionby {partition} \\
-    -survey ztf \\
-    --verbose
-        """
-        return code_block
+def update_commands_section(topic_name, inf_topic):
+    if not topic_name:
+        return no_update
+    retrieve_topic = inf_topic if inf_topic else topic_name
+    partition = "classId" if "elasticc" in topic_name else "finkclass"
+    dt_cmd = (
+        f"# fink-client>=12.0.0\n"
+        f"finkctl transfer \\\n"
+        f"    -survey ztf \\\n"
+        f"    -topic {retrieve_topic} \\\n"
+        f"    -outdir {retrieve_topic} \\\n"
+        f"    -partitionby {partition} \\\n"
+        f"    --verbose"
+    )
+    return dmc.CodeHighlight(code=dt_cmd, language="bash")
 
 
 @app.callback(
@@ -662,6 +732,7 @@ finkctl transfer \\
     Output("notification-container", "children"),
     Output("batch_id", "children"),
     Output("topic_name", "children"),
+    Output("inf-topic-store", "children"),
     [
         Input("submit_datatransfer", "n_clicks"),
     ],
@@ -672,6 +743,7 @@ finkctl transfer \\
         State("filter_select", "value"),
         State("field_select", "value"),
         State("extra_cond", "value"),
+        State("inf-model-select", "value"),
     ],
     prevent_initial_call=True,
 )
@@ -683,121 +755,230 @@ def submit_job(
     filter_select,
     field_select,
     extra_cond,
+    inf_model_select,
 ):
-    """Submit a job to the Apache Spark cluster via Livy"""
-    if n_clicks:
-        # define unique topic name
-        d = datetime.datetime.utcnow()
+    """Submit a data transfer job to the Apache Spark cluster via Livy.
 
-        if trans_datasource == "ZTF":
-            topic_name = f"ftransfer_ztf_{d.date().isoformat()}_{d.microsecond}"
-            fn = "assets/spark_ztf_transfer.py"
-            basepath = "hdfs://vdmaster1:8020/user/julien.peloton/archive/science"
-        elif trans_datasource == "ELASTiCC (v1)":
-            topic_name = f"ftransfer_elasticc_v1_{d.date().isoformat()}_{d.microsecond}"
-            fn = "assets/spark_elasticc_transfer.py"
-            basepath = (
-                "hdfs://vdmaster1:8020/user/julien.peloton/elasticc_curated_truth_int"
-            )
-        elif trans_datasource == "ELASTiCC (v2.0)":
-            topic_name = f"ftransfer_elasticc_v2_{d.date().isoformat()}_{d.microsecond}"
-            fn = "assets/spark_elasticc_transfer.py"
-            basepath = (
-                "hdfs://vdmaster1:8020/user/julien.peloton/elasticc-2023-training_v2"
-            )
-        elif trans_datasource == "ELASTiCC (v2.1)":
-            topic_name = (
-                f"ftransfer_elasticc_v2p1_{d.date().isoformat()}_{d.microsecond}"
-            )
-            fn = "assets/spark_elasticc_transfer.py"
-            basepath = "hdfs://vdmaster1:8020/user/julien.peloton/elasticc_training_v2p1_partitioned"
-        filename = f"stream_{topic_name}.py"
+    If AI models are selected (ZTF only), also create the K8s inference jobs.
+    """
+    if not n_clicks:
+        return no_update, no_update, no_update, no_update, no_update
 
-        with open(fn) as f:
-            data = f.read()
-        code = textwrap.dedent(data)
+    d = datetime.datetime.utcnow()
 
-        input_args = yaml.load(open("config_datatransfer.yml"), yaml.Loader)
-        status_code, hdfs_log = upload_file_hdfs(
-            code,
-            input_args["WEBHDFS"],
-            input_args["NAMENODE"],
-            input_args["USER"],
-            filename,
+    if trans_datasource == "ZTF":
+        topic_name = f"ftransfer_ztf_{d.date().isoformat()}_{d.microsecond}"
+        fn = "assets/spark_ztf_transfer.py"
+        basepath = "hdfs://vdmaster1:8020/user/julien.peloton/archive/science"
+    elif trans_datasource == "ELASTiCC (v1)":
+        topic_name = f"ftransfer_elasticc_v1_{d.date().isoformat()}_{d.microsecond}"
+        fn = "assets/spark_elasticc_transfer.py"
+        basepath = (
+            "hdfs://vdmaster1:8020/user/julien.peloton/elasticc_curated_truth_int"
         )
+    elif trans_datasource == "ELASTiCC (v2.0)":
+        topic_name = f"ftransfer_elasticc_v2_{d.date().isoformat()}_{d.microsecond}"
+        fn = "assets/spark_elasticc_transfer.py"
+        basepath = "hdfs://vdmaster1:8020/user/julien.peloton/elasticc-2023-training_v2"
+    elif trans_datasource == "ELASTiCC (v2.1)":
+        topic_name = f"ftransfer_elasticc_v2p1_{d.date().isoformat()}_{d.microsecond}"
+        fn = "assets/spark_elasticc_transfer.py"
+        basepath = "hdfs://vdmaster1:8020/user/julien.peloton/elasticc_training_v2p1_partitioned"
+    filename = f"stream_{topic_name}.py"
 
-        if status_code != 201:
-            text = dmc.Stack(
-                children=[
-                    "Unable to upload resources on HDFS, with error: ",
-                    dmc.CodeHighlight(code=f"{hdfs_log}", language="html"),
-                    "Contact an administrator at contact@fink-broker.org.",
-                ]
-            )
-            alert = dmc.Alert(
-                children=text, title=f"[Status code {status_code}]", color="red"
-            )
-            return True, alert, no_update, no_update
+    with open(fn) as f:
+        code = textwrap.dedent(f.read())
 
-        # get the job args
-        job_args = [
-            f"-startDate={date_range_picker[0]}",
-            f"-stopDate={date_range_picker[1]}",
-            f"-basePath={basepath}",
-            f"-topic_name={topic_name}",
-            "-kafka_bootstrap_servers={}".format(input_args["KAFKA_BOOTSTRAP_SERVERS"]),
-            "-kafka_sasl_username={}".format(input_args["KAFKA_SASL_USERNAME"]),
-            "-kafka_sasl_password={}".format(input_args["KAFKA_SASL_PASSWORD"]),
-            "-path_to_tns=/spark_mongo_tmp/julien.peloton/tns.parquet",
-        ]
-        if class_select is not None:
-            [job_args.append(f"-fclass={elem}") for elem in class_select]
-        if field_select is not None:
-            [job_args.append(f"-ffield={elem}") for elem in field_select]
-        if isinstance(filter_select, str):
-            job_args.append(f"-ffilter={filter_select}")
+    input_args = yaml.load(open("config_datatransfer.yml"), yaml.Loader)
+    status_code, hdfs_log = upload_file_hdfs(
+        code,
+        input_args["WEBHDFS"],
+        input_args["NAMENODE"],
+        input_args["USER"],
+        filename,
+    )
 
-        if extra_cond is not None:
-            extra_cond_list = extra_cond.split(";")
-            [job_args.append(f"-extraCond={elem.strip()}") for elem in extra_cond_list]
-
-        # submit the job
-        filepath = "hdfs://vdmaster1:8020/user/{}/{}".format(
-            input_args["USER"], filename
+    if status_code != 201:
+        text = dmc.Stack(
+            children=[
+                "Unable to upload resources on HDFS, with error: ",
+                html.Div(
+                    [
+                        html.Div(
+                            dcc.Clipboard(
+                                content=str(hdfs_log),
+                                title="Copy error",
+                                style={"cursor": "pointer", "fontSize": "0.8rem"},
+                            ),
+                            style={"display": "flex", "justifyContent": "flex-end"},
+                        ),
+                        html.Pre(
+                            str(hdfs_log),
+                            style={
+                                "maxHeight": "100px",
+                                "overflow": "auto",
+                                "fontSize": "0.75rem",
+                                "fontFamily": "monospace",
+                                "background": "rgba(255,255,255,0.5)",
+                                "borderRadius": "4px",
+                                "padding": "8px",
+                                "margin": 0,
+                                "whiteSpace": "pre",
+                            },
+                        ),
+                    ]
+                ),
+                "Contact an administrator at contact@fink-broker.org.",
+            ]
         )
-        batchid, status_code, spark_log = submit_spark_job(
-            input_args["LIVYHOST"],
-            filepath,
-            input_args["SPARKCONF"],
-            job_args,
-        )
-
-        if status_code != 201:
-            text = dmc.Stack(
-                children=[
-                    "Unable to upload resources on HDFS, with error: ",
-                    dmc.CodeHighlight(code=f"{spark_log}", language="html"),
-                    "Contact an administrator at contact@fink-broker.org.",
-                ]
-            )
-            alert = dmc.Alert(
-                children=text,
-                title=f"[Batch ID {batchid}][Status code {status_code}]",
-                color="red",
-            )
-            return True, alert, no_update, no_update
-
         alert = dmc.Alert(
-            children=f"Your topic name is: {topic_name}",
-            title="Submitted successfully",
-            color="green",
+            children=text, title=f"[Status code {status_code}]", color="red"
         )
-        if n_clicks:
-            return True, alert, batchid, topic_name
+        return True, alert, no_update, no_update, no_update
+
+    job_args = [
+        f"-startDate={date_range_picker[0]}",
+        f"-stopDate={date_range_picker[1]}",
+        f"-basePath={basepath}",
+        f"-topic_name={topic_name}",
+        "-kafka_bootstrap_servers={}".format(input_args["KAFKA_BOOTSTRAP_SERVERS"]),
+        "-kafka_sasl_username={}".format(input_args.get("KAFKA_SASL_USERNAME", "")),
+        "-kafka_sasl_password={}".format(input_args.get("KAFKA_SASL_PASSWORD", "")),
+        "-path_to_tns=/spark_mongo_tmp/julien.peloton/tns.parquet",
+    ]
+    run_ai = bool(inf_model_select) and trans_datasource == "ZTF"
+    if run_ai:
+        # The transfer topic is the inference input: the preprocessing
+        # needs candidate + prv_candidates whatever the user chose.
+        field_select = ["Medium packet"]
+
+    if class_select is not None:
+        [job_args.append(f"-fclass={elem}") for elem in class_select]
+    if field_select is not None:
+        [job_args.append(f"-ffield={elem}") for elem in field_select]
+    if isinstance(filter_select, str):
+        job_args.append(f"-ffilter={filter_select}")
+    if extra_cond is not None:
+        [
+            job_args.append(f"-extraCond={elem.strip()}")
+            for elem in extra_cond.split(";")
+        ]
+
+    filepath = "hdfs://vdmaster1:8020/user/{}/{}".format(input_args["USER"], filename)
+    batchid, status_code, spark_log = submit_spark_job(
+        input_args["LIVYHOST"],
+        filepath,
+        input_args["SPARKCONF"],
+        job_args,
+    )
+
+    if status_code != 201:
+        text = dmc.Stack(
+            children=[
+                "Unable to submit Spark job, with error: ",
+                html.Div(
+                    [
+                        html.Div(
+                            dcc.Clipboard(
+                                content=str(spark_log),
+                                title="Copy error",
+                                style={"cursor": "pointer", "fontSize": "0.8rem"},
+                            ),
+                            style={"display": "flex", "justifyContent": "flex-end"},
+                        ),
+                        html.Pre(
+                            str(spark_log),
+                            style={
+                                "maxHeight": "100px",
+                                "overflow": "auto",
+                                "fontSize": "0.75rem",
+                                "fontFamily": "monospace",
+                                "background": "rgba(255,255,255,0.5)",
+                                "borderRadius": "4px",
+                                "padding": "8px",
+                                "margin": 0,
+                                "whiteSpace": "pre",
+                            },
+                        ),
+                    ]
+                ),
+                "Contact an administrator at contact@fink-broker.org.",
+            ]
+        )
+        alert = dmc.Alert(
+            children=text,
+            title=f"[Batch ID {batchid}][Status code {status_code}]",
+            color="red",
+        )
+        return True, alert, no_update, no_update, no_update
+
+    # --- Optional AI (ZTF only) ---
+    if run_ai:
+        job_id = f"{d.date().isoformat()}_{d.microsecond}"
+        inf_output_topic = f"fink_ai_{job_id}"
+        inf_config = yaml.load(open("config_inference.yml"), yaml.Loader)
+
+        try:
+            # the K8s jobs read the alerts from the main data-transfer topic
+            created, k8s_errors = create_k8s_inference_jobs(
+                topic_name, inf_output_topic, job_id, inf_model_select, inf_config
+            )
+        except Exception:
+            logging.warning(
+                "[Inference] K8s job creation error:\n%s", traceback.format_exc()
+            )
+            created, k8s_errors = [], ["K8s unavailable"]
+
+        if created:
+            alert = dmc.Alert(
+                "Data transfer and AI inference jobs submitted.",
+                title="Success",
+                color="green",
+                icon=DashIconify(icon="tabler:check"),
+            )
         else:
-            return False, alert, batchid, topic_name
-    else:
-        return no_update, no_update, no_update, no_update
+            # only the data transfer is running: point the user to its topic
+            inf_output_topic = ""
+            alert = dmc.Alert(
+                "Data transfer job submitted, but no AI inference job could be created.",
+                title="AI inference failed",
+                color="red",
+                icon=DashIconify(icon="tabler:alert-circle"),
+            )
+
+        notification = dmc.Stack(
+            [
+                alert,
+                dmc.Text("Your topic:", fw=500),
+                dmc.Code(inf_output_topic or topic_name),
+            ]
+            + (
+                [
+                    dmc.Alert(
+                        f"K8s errors: {'; '.join(k8s_errors)}",
+                        color="orange",
+                        icon=DashIconify(icon="tabler:alert-circle"),
+                    )
+                ]
+                if k8s_errors
+                else []
+            )
+        )
+        return True, notification, batchid, topic_name, inf_output_topic
+
+    notification = dmc.Stack(
+        [
+            dmc.Alert(
+                "Data transfer job submitted.",
+                title="Success",
+                color="green",
+                icon=DashIconify(icon="tabler:check"),
+            ),
+            dmc.Text("Your topic:", fw=500),
+            dmc.Code(topic_name),
+        ]
+    )
+    return True, notification, batchid, topic_name, ""
 
 
 @app.callback(
@@ -844,27 +1025,6 @@ def update_log(batchid, interval):
         return no_update
 
 
-instructions = """
-#### 1. Review
-
-You are about to submit a job on the Fink Apache Spark & Kafka clusters.
-Review your parameters, and take into account the estimated number of
-alerts before hitting submission! Note that the estimation takes into account
-the days requested and the classes, but not the extra conditions (which could reduce the
-number of alerts).
-
-#### 2. Register
-
-To retrieve the data, you need to get an account. See [fink-client](https://github.com/astrolabsoftware/fink-client) and
-the [documentation](https://doc.ztf.fink-broker.org/en/latest/services/data_transfer/) for more information.
-
-#### 3. Retrieve
-
-Once data has started to flow in the topic, you can easily download your alerts using the [fink-client](https://github.com/astrolabsoftware/fink-client).
-Install the latest version and use e.g.
-"""
-
-
 def layout():
     pdf = query_and_order_statistics(
         columns="basic:sci",
@@ -893,20 +1053,16 @@ def layout():
         children=[
             dmc.Space(h=20),
             dmc.Grid(
-                justify="center",
                 gutter={"base": 5, "xs": "md", "md": "xl", "xl": 50},
-                grow=True,
                 children=[
                     dmc.GridCol(
                         children=[
                             dmc.Stack(
                                 [
                                     dmc.Space(h=20),
-                                    dmc.Center(
-                                        dmc.Title(
-                                            children="Fink Data Transfer",
-                                            style={"color": "#15284F"},
-                                        ),
+                                    dmc.Title(
+                                        children="Fink Data Transfer",
+                                        style={"color": "#15284F"},
                                     ),
                                     dmc.Space(h=20),
                                     dmc.SegmentedControl(
@@ -973,7 +1129,7 @@ def layout():
                                 align="center",
                             )
                         ],
-                        span=2,
+                        span=3,
                     ),
                     dmc.GridCol(
                         children=[
@@ -1000,25 +1156,36 @@ def layout():
                                         children=filter_content_tab(),
                                     ),
                                     dmc.StepperStep(
-                                        label="Launch transfer!",
-                                        description="Get your data",
-                                        children=dmc.Grid(
-                                            justify="center",
-                                            gutter={
-                                                "base": 5,
-                                                "xs": "md",
-                                                "md": "xl",
-                                                "xl": 50,
-                                            },
-                                            grow=True,
-                                            children=[
-                                                dmc.GridCol(
+                                        label="AI",
+                                        description="Optional: run ML models",
+                                        icon=html.Img(
+                                            src="/assets/robot-icon.png",
+                                            style={"width": "40px", "height": "40px"},
+                                        ),
+                                        children=ai_inference_tab(),
+                                    ),
+                                    dmc.StepperStep(
+                                        label="Launch",
+                                        description="Submit and retrieve your data",
+                                        children=html.Div(
+                                            [
+                                                dmc.Space(h=50),
+                                                dmc.Divider(
+                                                    variant="solid", label="Launch"
+                                                ),
+                                                dmc.Space(h=20),
+                                                dmc.Grid(
+                                                    gutter={
+                                                        "base": 5,
+                                                        "xs": "md",
+                                                        "md": "xl",
+                                                    },
                                                     children=[
-                                                        dmc.Stack(
+                                                        # ---- Left: submit + live status ----
+                                                        dmc.GridCol(
                                                             children=[
-                                                                dmc.Space(h=20),
                                                                 dmc.Group(
-                                                                    children=[
+                                                                    [
                                                                         dmc.Button(
                                                                             "Submit job",
                                                                             id="submit_datatransfer",
@@ -1040,10 +1207,13 @@ def layout():
                                                                         ),
                                                                     ]
                                                                 ),
+                                                                dmc.Space(h=20),
                                                                 html.Div(
-                                                                    id="notification-container"
+                                                                    id="notification-container",
+                                                                    style={
+                                                                        "minHeight": "120px"
+                                                                    },
                                                                 ),
-                                                                dmc.Group(children=[]),
                                                                 dcc.Interval(
                                                                     id="interval-component",
                                                                     interval=1 * 3000,
@@ -1053,26 +1223,74 @@ def layout():
                                                                     id="batch_log"
                                                                 ),
                                                             ],
-                                                            align="center",
-                                                        )
+                                                            span=7,
+                                                        ),
+                                                        # ---- Right: review / register / retrieve ----
+                                                        dmc.GridCol(
+                                                            children=[
+                                                                dmc.Title(
+                                                                    "1. Review", order=4
+                                                                ),
+                                                                dmc.Text(
+                                                                    "You are about to submit a job on the Fink Apache Spark & Kafka "
+                                                                    "clusters. Review your parameters, and take into account the "
+                                                                    "estimated number of alerts before hitting submission! Note that "
+                                                                    "the estimation takes into account the days requested and the "
+                                                                    "classes, but not the extra conditions (which could reduce the "
+                                                                    "number of alerts).",
+                                                                    size="sm",
+                                                                ),
+                                                                dmc.Space(h=15),
+                                                                dmc.Title(
+                                                                    "2. Register",
+                                                                    order=4,
+                                                                ),
+                                                                dmc.Text(
+                                                                    [
+                                                                        "To retrieve the data, you need to get a ",
+                                                                        html.A(
+                                                                            "fink-client",
+                                                                            href="https://github.com/astrolabsoftware/fink-client",
+                                                                            target="_blank",
+                                                                        ),
+                                                                        " account. See the ",
+                                                                        html.A(
+                                                                            "documentation",
+                                                                            href="https://doc.ztf.fink-broker.org/en/latest/services/data_transfer/",
+                                                                            target="_blank",
+                                                                        ),
+                                                                        " for more information.",
+                                                                    ],
+                                                                    size="sm",
+                                                                ),
+                                                                dmc.Space(h=15),
+                                                                dmc.Title(
+                                                                    "3. Retrieve",
+                                                                    order=4,
+                                                                ),
+                                                                dmc.Text(
+                                                                    [
+                                                                        "Once data has started to flow in the topic, you can easily "
+                                                                        "download your alerts using the ",
+                                                                        html.A(
+                                                                            "fink-client",
+                                                                            href="https://github.com/astrolabsoftware/fink-client",
+                                                                            target="_blank",
+                                                                        ),
+                                                                        ". Install the latest version and use e.g.",
+                                                                    ],
+                                                                    size="sm",
+                                                                ),
+                                                                dmc.Space(h=10),
+                                                                html.Div(
+                                                                    id="commands-section"
+                                                                ),
+                                                            ],
+                                                            span=5,
+                                                        ),
                                                     ],
-                                                    span=6,
                                                 ),
-                                                dmc.GridCol(
-                                                    dmc.Stack(
-                                                        children=[
-                                                            dmc.Space(h=20),
-                                                            dcc.Markdown(instructions),
-                                                            dmc.CodeHighlight(
-                                                                code="# Submit to see code",
-                                                                id="code_block",
-                                                                language="bash",
-                                                            ),
-                                                        ]
-                                                    ),
-                                                    span=6,
-                                                ),
-                                            ],
+                                            ]
                                         ),
                                     ),
                                 ],
@@ -1092,6 +1310,9 @@ def layout():
                             dcc.Store(data="", id="log_progress"),
                             html.Div("", id="batch_id", style={"display": "none"}),
                             html.Div("", id="topic_name", style={"display": "none"}),
+                            html.Div(
+                                "", id="inf-topic-store", style={"display": "none"}
+                            ),
                         ],
                         span=9,
                     ),

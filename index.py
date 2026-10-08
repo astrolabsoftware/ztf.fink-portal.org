@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import io
+import logging
 
 import dash
 from dash import (
@@ -57,6 +58,8 @@ import pandas as pd
 import numpy as np
 
 import urllib
+
+logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 
 config_args = extract_configuration("config.yml")
 
@@ -1825,6 +1828,16 @@ navbar = dmc.AppShellHeader(
                                             "color": "gray",
                                         },
                                         href="/stats",
+                                        size="sm",
+                                    ),
+                                    dmc.Anchor(
+                                        "AI",
+                                        style={
+                                            "textTransform": "capitalize",
+                                            "textDecoration": "none",
+                                            "color": "gray",
+                                        },
+                                        href="/download",
                                         size="sm",
                                     ),
                                 ],
