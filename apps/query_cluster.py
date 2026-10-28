@@ -35,7 +35,7 @@ import fink_filters.ztf.livestream as ffz
 args = extract_configuration("config.yml")
 APIURL = args["APIURL"]
 
-simbad_types = get_simbad_labels("old_and_new")
+simbad_types = [] #get_simbad_labels("old_and_new")
 simbad_types = sorted(simbad_types, key=lambda s: s.lower())
 
 tns_types = pd.read_csv("assets/tns_types.csv", header=None)[0].to_numpy()

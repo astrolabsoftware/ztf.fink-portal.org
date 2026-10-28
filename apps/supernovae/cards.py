@@ -221,7 +221,7 @@ def card_sn_properties(clickData1, clickData2, clickData3, clickData4, object_da
 
     classification = pdf["v:classification"].to_numpy()[position]
 
-    simbad_types = get_simbad_labels("old_and_new")
+    simbad_types = [] #get_simbad_labels("old_and_new")
     simbad_types = sorted(simbad_types, key=lambda s: s.lower())
 
     if classification in simbad_types:

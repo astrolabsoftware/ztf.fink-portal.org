@@ -45,7 +45,7 @@ import fink_filters.ztf.livestream as ffz
 # Access local or remove API endpoint
 
 
-simbad_types = get_simbad_labels("old_and_new")
+simbad_types = [] #get_simbad_labels("old_and_new")
 simbad_types = sorted(simbad_types, key=lambda s: s.lower())
 
 class_colors = {

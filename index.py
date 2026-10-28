@@ -790,6 +790,7 @@ def display_table_results(table, query):
         Input("result_table", "columns"),
         Input("modal_skymap", "is_open"),
     ],
+    background=True,
 )
 def display_skymap(data, columns, is_open):
     """Display explorer result on a sky map (Aladin lite). Limited to 1000 sources total.
@@ -834,7 +835,8 @@ def display_skymap(data, columns, is_open):
             allowFullZoomout: true,
             showContextMenu: true,
             showCooGridControl: true,
-            fov: 360
+            fov: 360,
+            timeout: 1,
             }}
         );
         """.format(ra0, dec0)
