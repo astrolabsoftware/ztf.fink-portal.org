@@ -38,6 +38,14 @@ def asteroid_3d(): # cf. Sec. 2.1
                              className="model3d-date-select"),
                 html.Span(id="model-3d-date", className="model3d-date-value"),
             ], className="model3d-date-bar"),
+            html.Button(DashIconify(icon="majesticons:globe-grid-line", width=23), id="model3d-coordinates-button",
+                        className="model3d-coordinates-button", title="Show/hide latitude and longitude grid"),
+            html.Button(DashIconify(icon="tabler:hand-move", width=21), id="model3d-rotate-button",
+                        className="model3d-rotate-button", title="Enable manual rotation"),
+            html.Button(DashIconify(icon="mdi:play", width=23), id="model3d-play-button",
+                        className="model3d-play-button", title="Play / Pause asteroid rotation"),
+            html.Button("P", id="model3d-periode-button", className="model3d-periode-button",
+            title="Period correction"),
             html.Button("D", id="model3d-damit-button", className="model3d-damit-button",
                         title="DAMIT correction"),
             html.Button(DashIconify(icon="tabler:arrows-maximize", width=19), id="model3d-fullscreen",
@@ -151,6 +159,7 @@ def build_3d_orientation(ssoid, socca, date):  # cf. Sec. 2.9
         TWO_PI / P_socca, t0, ra, dec, jd, d_obs,
     )
     phi_corrected = phi_socca
+    phi_periode = phi_socca 
 
     d = get_damit_major_axis_angle(ssoid)
     if d is None:
@@ -167,22 +176,20 @@ def build_3d_orientation(ssoid, socca, date):  # cf. Sec. 2.9
         )
 
         offset = np.radians(d["offset"])                      # décalage de repère
-        phi_damit_in_socca = (phi_damit - offset) % TWO_PI
-        delta_period = TWO_PI * (compute_light_travel_correction(jd, d_obs) - t0) \
-                       * (1 / P_damit - 1 / P_socca)          # correction de période
+        delta_period = TWO_PI * (compute_light_travel_correction(jd, d_obs) - t0) * (1 / P_damit - 1 / P_socca)          # correction de période
         phi_socca_in_damit = (phi_socca + offset) % TWO_PI
         phi_corrected = (phi_socca_in_damit - delta_period) % TWO_PI
+        phi_periode = (phi_socca - delta_period) % TWO_PI
         print(f"DAMIT : aspect = {deg(asp_d):.2f}, lon = {deg(phi_damit):.2f}, lat = {90 - deg(asp_d):.2f}")
         print(f"SOCCA : aspect = {deg(aspect):.2f}, lon = {deg(phi_socca):.2f}, lat = {90 - deg(aspect):.2f}")
-        print(f"DAMIT dans le repère SOCCA : décalage grand axe = {deg(offset):.2f}, lon = {deg(phi_damit_in_socca):.2f}")
-        print(f"SOCCA - DAMIT : dlon = {deg(phi_socca - phi_damit_in_socca):.2f}, dlat = {deg(asp_d - aspect):.2f}")
         print(f"Période : correction = {deg(delta_period) % 360:.2f}, "
             f"phi SOCCA (repère DAMIT) {deg(phi_socca_in_damit):.2f} -> {deg(phi_corrected):.2f} "
             f"(phi DAMIT = {deg(phi_damit):.2f})")
 
     q_socca = orientation_to_quaternion(aspect, np_angle, phi_socca)
+    q_periode = orientation_to_quaternion(aspect, np_angle, phi_periode) if d is not None else None 
     q_damit = orientation_to_quaternion(aspect, np_angle, phi_corrected) if d is not None else None
-    return q_socca, q_damit, sun_to_camera_vector(ra, dec, ra_sun, dec_sun).tolist()
+    return q_socca, q_periode, q_damit, sun_to_camera_vector(ra, dec, ra_sun, dec_sun).tolist()
 
 @app.callback(
     Output("model-3d-params", "data"),
@@ -203,8 +210,8 @@ def update_3d(socca, click_data, object_sso):
     if click_data and click_data.get("points"):
         jd = float(click_data["points"][0]["customdata"]) + 2400000.5  # point clique (MJD -> JD)
 
-    q_socca, q_damit, sun_direction = build_3d_orientation(ssoid, socca, Time(jd, format="jd", scale="utc").isot)
-    return {"quaternion": q_socca, "quaternion_damit": q_damit, "sun_direction": sun_direction,
+    q_socca, q_periode, q_damit, sun_direction = build_3d_orientation(ssoid, socca, Time(jd, format="jd", scale="utc").isot)
+    return {"quaternion": q_socca, "quaternion_periode": q_periode, "quaternion_damit": q_damit, "sun_direction": sun_direction,
             "a_b": socca["a_b"], "a_c": socca["a_c"], "period": socca["period"]}, jd
 
 @app.callback(

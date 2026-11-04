@@ -1,3 +1,32 @@
+// Quadrillage longitude / latitude tous les 10 degres
+function makeGridTexture() {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1440;
+    canvas.height = 720;
+    const ctx = canvas.getContext("2d");
+
+    ctx.fillStyle = "#777777";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "#00ff00";
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+
+    for (let lon = 0; lon <= 360; lon += 10) {
+        ctx.moveTo((lon / 360) * canvas.width, 0);
+        ctx.lineTo((lon / 360) * canvas.width, canvas.height);
+    }
+
+    for (let lat = -90; lat <= 90; lat += 10) {
+        ctx.moveTo(0, ((lat + 90) / 180) * canvas.height);
+        ctx.lineTo(canvas.width, ((lat + 90) / 180) * canvas.height);
+    }
+
+    ctx.stroke();
+
+    return new THREE.CanvasTexture(canvas);
+}
+
 // Conversion de la geometrie Three.js en texte OBJ
 function geometryToOBJ(geometry) {
     const positions = geometry.getAttribute("position");
@@ -107,18 +136,61 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             const asteroidGroup = new THREE.Group();
             asteroidGroup.add(object);
 
-            // ordre [x, y, z, w]
-            // Orientation : SOCCA seule par defaut, corrigee DAMIT au clic
-            let useDamit = false;
-            const hasDamit = !!(p.quaternion_damit && p.quaternion_damit.length === 4);
+            // Orientation : SOCCA seule par defaut, corrigee periode ou DAMIT au clic
+            let mode = "socca";   // "socca", "periode" ou "damit"
+
+            // Un objet par correction : son bouton, son quaternion, son nom
+            const corrections = {
+                periode: {
+                    button: document.getElementById("model3d-periode-button"),
+                    quaternion: p.quaternion_periode,
+                    info: "Period correction: adjusts the rotation phase using the DAMIT period."
+                },
+                damit: {
+                    button: document.getElementById("model3d-damit-button"),
+                    quaternion: p.quaternion_damit,
+                    info: "DAMIT corrections: adjusts both the rotation period and reference longitude."
+                }
+            };
+
+            function hasQuaternion(q) {
+                return !!(q && q.length === 4);
+            }
 
             function applyOrientation() {
-                const q = (useDamit && hasDamit) ? p.quaternion_damit : p.quaternion;
+                const c = corrections[mode];
+                const q = (c && hasQuaternion(c.quaternion)) ? c.quaternion : p.quaternion;
                 // ordre [x, y, z, w]
                 if (q && q.length === 4) asteroidGroup.quaternion.set(q[0], q[1], q[2], q[3]).normalize();
             }
+
+            // Met a jour les deux boutons : grise, actif, infobulle
+            function updateButtons() {
+                for (const key in corrections) {
+                    const c = corrections[key];
+                    const has = hasQuaternion(c.quaternion);
+                    const on = mode === key && has;
+                    c.button.disabled = !has;
+                    c.button.classList.toggle("active", on);
+                    c.button.title = !has ? "No model available"
+                                   : on ? c.info + ": ON (click to disable)"
+                                        : c.info + ": OFF (click to enable)";
+                }
+            }
+
+            // Un clic : on active le mode, ou on revient a SOCCA s'il etait deja actif
+            for (const key in corrections) {
+                corrections[key].button.onclick = function () {
+                    mode = (mode === key) ? "socca" : key;
+                    updateButtons();
+                    applyOrientation();
+                    renderer.render(scene, camera);
+                };
+            }
+
             applyOrientation();
             scene.add(asteroidGroup);
+            updateButtons();
 
             // Direction du Soleil
             const sunDirection = new THREE.Vector3(0, 0, 1);
@@ -129,23 +201,17 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             const sunPosition = sunDirection.clone().multiplyScalar(maxSize * 10);
             addLights(scene, sunPosition);
 
-            // Bouton DAMIT : active / desactive la correction
-            const damitButton = document.getElementById("model3d-damit-button");
-            function updateDamitButton() {
-                const on = useDamit && hasDamit;
-                damitButton.disabled = !hasDamit;
-                damitButton.classList.toggle("active", on);
-                damitButton.title = !hasDamit ? "No DAMIT model available"
-                                  : on ? "DAMIT correction: ON (click to disable)"
-                                       : "DAMIT correction: OFF (click to enable)";
-            }
-            damitButton.onclick = function () {
-                useDamit = !useDamit;
-                updateDamitButton();
-                applyOrientation();
+            // Bouton globe : affiche / cache le quadrillage et les coordonnees
+            const gridMaterial = new THREE.MeshLambertMaterial({ map: makeGridTexture(), side: THREE.DoubleSide });
+            let gridVisible = false;
+            const gridButton = document.getElementById("model3d-coordinates-button");
+
+            gridButton.onclick = function () {
+                gridVisible = !gridVisible;
+                object.material = gridVisible ? gridMaterial : grayMaterial;
+                gridButton.classList.toggle("active", gridVisible);
                 renderer.render(scene, camera);
             };
-            updateDamitButton();
 
             camera.position.set(0, 0, maxSize * zoom);
             camera.up.set(0, 1, 0);
@@ -163,8 +229,46 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             document.getElementById("model3d-zoom-in").onclick = function () { setZoom(0.8); };
             document.getElementById("model3d-zoom-out").onclick = function () { setZoom(1.25); };
 
-            // Affichage initial de l'asteroide
-            renderer.render(scene, camera);
+             // rotation manuelle activee par le bouton
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.enableRotate = false;
+            controls.enableZoom = false;
+            controls.enablePan = false;
+
+            const rotateButton = document.getElementById("model3d-rotate-button");
+            rotateButton.onclick = function () {
+                controls.enableRotate = !controls.enableRotate;
+                rotateButton.title = controls.enableRotate ? "Disable manual rotation" : "Enable manual rotation";
+                rotateButton.classList.toggle("active", controls.enableRotate);
+            };
+
+            // Mise à jour continue de la scène pour la rotation manuelle
+            // Rotation automatique : un tour complet en 10 secondes
+            let playing = false;
+            let lastTime = null;
+            const rotationDuration = 10;
+            const playButton = document.getElementById("model3d-play-button");
+
+            playButton.onclick = function () {
+                playing = !playing;
+                playButton.title = playing ? "Pause asteroid rotation" : "Play asteroid rotation";
+                playButton.classList.toggle("active", playing);
+                lastTime = null;
+            };
+
+            function animate(time) {
+                requestAnimationFrame(animate);
+
+                if (playing && lastTime !== null) {
+                    asteroidGroup.rotateZ(2 * Math.PI * ((time - lastTime) / 1000) / rotationDuration);
+                }
+                lastTime = time;
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            requestAnimationFrame(animate);
 
             return "";
         }

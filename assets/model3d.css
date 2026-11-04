@@ -35,7 +35,11 @@
 }
 .model3d-instruction svg { flex-shrink: 0; margin-top: 1px; }
 
-/* boutons de gauche, meme style */
+/* boutons de gauche (Periode, DAMIT), meme style */
+.model3d-coordinates-button,
+.model3d-periode-button,
+.model3d-rotate-button,
+.model3d-play-button,
 .model3d-damit-button {
     position: absolute; left: 5px; z-index: 20;
     display: flex; align-items: center; justify-content: center;
@@ -43,11 +47,23 @@
     background: rgba(235, 235, 235, 0.85);
     border: 1px solid #aaa; border-radius: 2px;
     color: #333; cursor: pointer;
+    font-weight: bold; font-size: 13px;
+    outline: none; box-shadow: none;
 }
-.model3d-damit-button { top: 30px; font-weight: bold; font-size: 13px; }
-.model3d-damit-button.active { background: #dceeff; color: #0066cc; }
-.model3d-damit-button:disabled { opacity: 0.4; cursor: not-allowed; }
+.model3d-coordinates-button { top: 30px; }
+.model3d-rotate-button { top: 63px; }
+.model3d-play-button { top: 96px; }
+.model3d-periode-button { top: 129px; }
+.model3d-damit-button { top: 162px; }
 
+.model3d-coordinates-button.active,
+.model3d-rotate-button.active,
+.model3d-play-button.active,
+.model3d-periode-button.active,
+.model3d-damit-button.active { background: #dceeff; color: #0066cc; }
+
+.model3d-periode-button:disabled,
+.model3d-damit-button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* plein ecran */
 .model3d-fullscreen {
@@ -72,10 +88,18 @@
 }
 
 /* survol (les boutons actifs gardent leur couleur) */
+.model3d-coordinates-button:hover,
+.model3d-periode-button:hover:not(:disabled),
 .model3d-damit-button:hover:not(:disabled),
 .model3d-fullscreen:hover,
-.model3d-zoom-controls button:hover { background: rgba(255, 255, 255, 0.95); }
+.model3d-rotate-button:hover,
+.model3d-play-button:hover,
+.model3d-zoom-controls button:hover {  background: rgba(255, 255, 255, 0.95); }
+.model3d-periode-button.active:hover,
+.model3d-rotate-button.active:hover,
+.model3d-play-button.active:hover,
 .model3d-damit-button.active:hover { background: #dceeff; }
+
 
 /* champ de vision et info sur le fond */
 .model3d-fov {
@@ -96,4 +120,3 @@
     color: #3273dc; font-size: 13px; text-decoration: none;
 }
 .model3d-download-link:hover { text-decoration: underline; }
-
