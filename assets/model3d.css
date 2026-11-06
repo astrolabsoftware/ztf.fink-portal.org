@@ -35,7 +35,8 @@
 }
 .model3d-instruction svg { flex-shrink: 0; margin-top: 1px; }
 
-/* boutons de gauche (Periode, DAMIT), meme style */
+/* boutons de gauche */
+.model3d-axes-button,
 .model3d-coordinates-button,
 .model3d-periode-button,
 .model3d-rotate-button,
@@ -51,11 +52,13 @@
     outline: none; box-shadow: none;
 }
 .model3d-coordinates-button { top: 30px; }
-.model3d-rotate-button { top: 63px; }
-.model3d-play-button { top: 96px; }
-.model3d-periode-button { top: 129px; }
-.model3d-damit-button { top: 162px; }
+.model3d-axes-button { top: 63px; }
+.model3d-rotate-button { top: 96px; }
+.model3d-play-button { top: 129px; }
+.model3d-periode-button { top: 162px; }
+.model3d-damit-button { top: 195px; }
 
+.model3d-axes-button.active,
 .model3d-coordinates-button.active,
 .model3d-rotate-button.active,
 .model3d-play-button.active,
@@ -88,6 +91,7 @@
 }
 
 /* survol (les boutons actifs gardent leur couleur) */
+.model3d-axes-button:hover,
 .model3d-coordinates-button:hover,
 .model3d-periode-button:hover:not(:disabled),
 .model3d-damit-button:hover:not(:disabled),
@@ -95,6 +99,8 @@
 .model3d-rotate-button:hover,
 .model3d-play-button:hover,
 .model3d-zoom-controls button:hover {  background: rgba(255, 255, 255, 0.95); }
+.model3d-axes-button.active:hover,
+.model3d-coordinates-button.active:hover,
 .model3d-periode-button.active:hover,
 .model3d-rotate-button.active:hover,
 .model3d-play-button.active:hover,

@@ -33,13 +33,15 @@ def asteroid_3d(): # cf. Sec. 2.1
         html.Div([
             html.Div(id="model-3d", style={"width": "100%", "height": "450px"}),
             html.Div([
-                dcc.Dropdown(id="model-3d-date-format", value="utc", clearable=False, searchable=False,
-                             options=[{"label": "UTC", "value": "utc"}, {"label": "JD", "value": "jd"}, {"label": "MJD", "value": "mjd"}],
+                dcc.Dropdown(id="model-3d-date-format", value="iso", clearable=False, searchable=False,
+                             options=[{"label": "ISO", "value": "iso"}, {"label": "JD", "value": "jd"}, {"label": "MJD", "value": "mjd"}],
                              className="model3d-date-select"),
                 html.Span(id="model-3d-date", className="model3d-date-value"),
             ], className="model3d-date-bar"),
             html.Button(DashIconify(icon="majesticons:globe-grid-line", width=23), id="model3d-coordinates-button",
                         className="model3d-coordinates-button", title="Show/hide latitude and longitude grid"),
+            html.Button(DashIconify(icon="mdi:axis-arrow", width=23), id="model3d-axes-button",
+                         className="model3d-axes-button", title="Show/hide asteroid axes"),
             html.Button(DashIconify(icon="tabler:hand-move", width=21), id="model3d-rotate-button",
                         className="model3d-rotate-button", title="Enable manual rotation"),
             html.Button(DashIconify(icon="mdi:play", width=23), id="model3d-play-button",

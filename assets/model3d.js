@@ -73,6 +73,47 @@ function addLights(scene, sunPosition) {
     scene.add(sunLight);
 }
 
+// Axes X, Y, Z : fleches fines + petites lettres, par-dessus l'asteroide
+function makeAxes(size) {
+    const group = new THREE.Group();
+
+    // Une fleche et une lettre par axe : [lettre, couleur, x, y, z]
+    for (const [letter, color, x, y, z] of [["X", "#ff5555", 1, 0, 0], ["Y", "#55dd55", 0, 1, 0], ["Z", "#5599ff", 0, 0, 1]]) {
+        const dir = new THREE.Vector3(x, y, z);
+
+        // Fleche du centre vers l'exterieur (longueur, pointe, largeur de pointe)
+        group.add(new THREE.ArrowHelper(dir, new THREE.Vector3(), size, color, size * 0.12, size * 0.05));
+
+        // Lettre dessinee sur un petit canvas 2D
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 64;
+        const ctx = canvas.getContext("2d");
+        ctx.font = "32px sans-serif";
+        ctx.fillStyle = color;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(letter, 32, 32);
+
+        // Sprite : la lettre fait toujours face a la camera, placee juste apres la pointe
+        const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
+        label.position.copy(dir).multiplyScalar(size * 1.15);
+        label.scale.setScalar(size * 0.2);
+        group.add(label);
+    }
+
+    // Par-dessus l'asteroide, legerement transparent pour rester discret
+    // (traverse : applique le reglage a la ligne et au cone de chaque fleche, et aux lettres)
+    group.traverse(o => {
+        o.renderOrder = 10;               // dessine apres l'asteroide
+        if (o.material) {
+            o.material.depthTest = false; // visible meme a travers l'asteroide
+            o.material.transparent = true;
+            o.material.opacity = 0.85;
+        }
+    });
+
+    return group;
+}
 
 window.dash_clientside = Object.assign({}, window.dash_clientside, {
     model3d: {
@@ -91,7 +132,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             scene.background = new THREE.Color(0x111111);
 
             const camera = new THREE.PerspectiveCamera(25, w / h, 0.1, 1000);
-            let zoom = 3;
+            let zoom = 4;
             const renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(w, h);
             container.appendChild(renderer.domElement);
@@ -184,6 +225,10 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 
             const asteroidGroup = new THREE.Group();
             asteroidGroup.add(object);
+
+            // Axes du repere de l'asteroide
+            const axes = makeAxes(maxSize * 0.6);
+            asteroidGroup.add(axes);
 
             // Orientation SOCCA par defaut.
             // Les modes P (periode) et D (periode + longitude de reference) servent uniquement a comparer les orientations avec DAMIT.
@@ -302,6 +347,13 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
                 playButton.title = playing ? "Pause asteroid rotation" : "Play asteroid rotation";
                 playButton.classList.toggle("active", playing);
                 requestRender();   // relance la boucle (eteinte en pause)
+            };
+            // Afficher ou cacher les axes
+            const axesButton = document.getElementById("model3d-axes-button");
+            axesButton.onclick = function () {
+                axes.visible = !axes.visible;
+                axesButton.classList.toggle("active", axes.visible);
+                requestRender();
             };
 
             // Libere les ressources de l'ancien rendu
