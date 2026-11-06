@@ -44,6 +44,7 @@ def asteroid_3d(): # cf. Sec. 2.1
                         className="model3d-rotate-button", title="Enable manual rotation"),
             html.Button(DashIconify(icon="mdi:play", width=23), id="model3d-play-button",
                         className="model3d-play-button", title="Play / Pause asteroid rotation"),
+            # Boutons temporaires de comparaison avec DAMIT (absents de la version finale)
             html.Button("P", id="model3d-periode-button", className="model3d-periode-button",
             title="Period correction"),
             html.Button("D", id="model3d-damit-button", className="model3d-damit-button",

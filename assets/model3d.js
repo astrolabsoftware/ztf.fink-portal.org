@@ -33,17 +33,18 @@ function geometryToOBJ(geometry) {
     const normals = geometry.getAttribute("normal");
     const uvs = geometry.getAttribute("uv");
     const indices = geometry.getIndex();
-
     const lines = ["# SOCCA ellipsoid"];
-
+    // Sommets
     for (let i = 0; i < positions.count; i++) {
         lines.push(`v ${positions.getX(i)} ${positions.getY(i)} ${positions.getZ(i)}`);
     }
+    // Coordonnees de texture
     if (uvs) {
         for (let i = 0; i < uvs.count; i++) {
             lines.push(`vt ${uvs.getX(i)} ${uvs.getY(i)}`);
         }
     }
+    // Normales
     if (normals) {
         for (let i = 0; i < normals.count; i++) {
             lines.push(`vn ${normals.getX(i)} ${normals.getY(i)} ${normals.getZ(i)}`);
@@ -53,7 +54,7 @@ function geometryToOBJ(geometry) {
     // les indices OBJ commencent a 1
     const vertexIndex = i => (indices ? indices.getX(i) : i) + 1;
     const count = indices ? indices.count : positions.count;
-
+    // Faces triangulaires
     for (let i = 0; i < count; i += 3) {
         const a = vertexIndex(i), b = vertexIndex(i + 1), c = vertexIndex(i + 2);
         lines.push(`f ${a}/${a}/${a} ${b}/${b}/${b} ${c}/${c}/${c}`);
@@ -80,8 +81,11 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 
             const container = document.getElementById("model-3d");
             if (!container) return "";
-            container.innerHTML = "";
 
+            // Supprime l'ancien rendu
+            if (window.model3dCleanup) window.model3dCleanup();
+            container.innerHTML = "";
+            // Creation de la scene, de la camera et du rendu
             const w = container.clientWidth, h = container.clientHeight;
             const scene = new THREE.Scene();
             scene.background = new THREE.Color(0x111111);
@@ -92,18 +96,63 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             renderer.setSize(w, h);
             container.appendChild(renderer.domElement);
 
+            // Rendu a la demande
+            let rafId = null;          // image en attente 
+            let lastTime = null;       // temps de la derniere image
+            let playing = false;       // rotation automatique active ou non
+            let visible = true;        // false quand le conteneur n'est plus affiche
+            const rotationDuration = 10;   // secondes par tour
+
+            // Demande une nouvelle image
+            function requestRender() {
+                if (!rafId) rafId = requestAnimationFrame(frame);
+            }
+
+            function frame(time) {
+                rafId = null;   // image creee
+
+                if (!visible) {      // conteneur cache : on arrete la boucle
+                    lastTime = null;
+                    return;
+                }
+
+                if (playing) {          // Rotation de l'asteroide si la lecture est active
+                    if (lastTime !== null) {
+                        // plafonne : evite un grand saut apres un onglet cache
+                        const dt = Math.min(time - lastTime, 100);   // Rotation autour de l'axe Z
+                        asteroidGroup.rotateZ(2 * Math.PI * dt / (rotationDuration * 1000));
+                    }
+                    lastTime = time;
+                } else {
+                    lastTime = null;
+                }
+
+                const moved = controls.update();   // true tant que la camera bouge
+                renderer.render(scene, camera);
+
+                if (playing || moved) requestRender();   // on continue seulement si besoin
+            }
+
+            // Pause du rendu quand le conteneur n'est plus visible (changement d'onglet Dash)
+            const visibilityObserver = new IntersectionObserver(function (entries) {
+                visible = entries[0].isIntersecting;
+                if (visible) requestRender();   // au retour, on redessine
+            });
+            visibilityObserver.observe(container);
+
             // Plein ecran + adaptation du rendu a la taille du conteneur
             const view = document.querySelector(".model3d-view");
             document.getElementById("model3d-fullscreen").onclick = function () {
                 if (!document.fullscreenElement) view.requestFullscreen();
                 else document.exitFullscreen();
             };
-            document.addEventListener("fullscreenchange", function () {
+            const onFullscreen = function () {
                 renderer.setSize(container.clientWidth, container.clientHeight);
                 camera.aspect = container.clientWidth / container.clientHeight;
                 camera.updateProjectionMatrix();
-                renderer.render(scene, camera);
-            });
+                requestRender();
+            };
+            document.addEventListener("fullscreenchange", onFullscreen);
 
             // Ellipsoide SOCCA
             // SphereGeometry utilise Y comme axe polaire, SOCCA utilise Z comme axe de rotation
@@ -136,7 +185,9 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             const asteroidGroup = new THREE.Group();
             asteroidGroup.add(object);
 
-            // Orientation : SOCCA seule par defaut, corrigee periode ou DAMIT au clic
+            // Orientation SOCCA par defaut.
+            // Les modes P (periode) et D (periode + longitude de reference) servent uniquement a comparer les orientations avec DAMIT.
+            // Ces boutons sont temporaires et seront retires de la version finale.
             let mode = "socca";   // "socca", "periode" ou "damit"
 
             // Un objet par correction : son bouton, son quaternion, son nom
@@ -153,11 +204,11 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
                 }
             };
 
-            function hasQuaternion(q) {
+            function hasQuaternion(q) {     // Verifie si le quaternion est disponible
                 return !!(q && q.length === 4);
             }
 
-            function applyOrientation() {
+            function applyOrientation() { // Applique l'orientation choisie
                 const c = corrections[mode];
                 const q = (c && hasQuaternion(c.quaternion)) ? c.quaternion : p.quaternion;
                 // ordre [x, y, z, w]
@@ -184,7 +235,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
                     mode = (mode === key) ? "socca" : key;
                     updateButtons();
                     applyOrientation();
-                    renderer.render(scene, camera);
+                    requestRender();
                 };
             }
 
@@ -210,9 +261,10 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
                 gridVisible = !gridVisible;
                 object.material = gridVisible ? gridMaterial : grayMaterial;
                 gridButton.classList.toggle("active", gridVisible);
-                renderer.render(scene, camera);
+                requestRender();
             };
 
+            // Camera
             camera.position.set(0, 0, maxSize * zoom);
             camera.up.set(0, 1, 0);
             camera.near = maxSize * 0.01;
@@ -223,19 +275,18 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             // Zoom
             function setZoom(factor) {
                 zoom = Math.min(10, Math.max(1.5, zoom * factor));
-                camera.position.set(0, 0, maxSize * zoom);
-                renderer.render(scene, camera);
+                camera.position.setLength(maxSize * zoom);   // change la distance, garde l'angle de vue
+                requestRender();
             }
             document.getElementById("model3d-zoom-in").onclick = function () { setZoom(0.8); };
             document.getElementById("model3d-zoom-out").onclick = function () { setZoom(1.25); };
 
-             // rotation manuelle activee par le bouton
+            // Rotation manuelle (souris), activee par le bouton
             const controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
-            controls.enableRotate = false;
-            controls.enableZoom = false;
-            controls.enablePan = false;
+            controls.enableRotate = controls.enableZoom = controls.enablePan = false;
+            controls.addEventListener("change", requestRender);   // souris + inertie
 
             const rotateButton = document.getElementById("model3d-rotate-button");
             rotateButton.onclick = function () {
@@ -244,31 +295,31 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
                 rotateButton.classList.toggle("active", controls.enableRotate);
             };
 
-            // Mise à jour continue de la scène pour la rotation manuelle
             // Rotation automatique : un tour complet en 10 secondes
-            let playing = false;
-            let lastTime = null;
-            const rotationDuration = 10;
             const playButton = document.getElementById("model3d-play-button");
-
             playButton.onclick = function () {
                 playing = !playing;
                 playButton.title = playing ? "Pause asteroid rotation" : "Play asteroid rotation";
                 playButton.classList.toggle("active", playing);
-                lastTime = null;
+                requestRender();   // relance la boucle (eteinte en pause)
             };
 
-            function animate(time) {
-                requestAnimationFrame(animate);
+            // Libere les ressources de l'ancien rendu
+            window.model3dCleanup = function () {
+                if (rafId) cancelAnimationFrame(rafId);   // annule l'image en attente
+                visibilityObserver.disconnect();          // arrete la surveillance du conteneur
+                document.removeEventListener("fullscreenchange", onFullscreen); // retire l'ecoute du plein ecran
+                controls.dispose();                       // supprime les controles de la camera
+                geometry.dispose();                       // libere la geometrie
+                grayMaterial.dispose();                   // libere le materiau gris
+                gridMaterial.map.dispose();               // libere la texture du quadrillage
+                gridMaterial.dispose();                   // libere le materiau du quadrillage
+                renderer.dispose();                       // libere les ressources du rendu
+                renderer.forceContextLoss();              // libere le contexte WebGL
+                URL.revokeObjectURL(objUrl);              // supprime l'URL temporaire du fichier OBJ
+            };
 
-                if (playing && lastTime !== null) {
-                    asteroidGroup.rotateZ(2 * Math.PI * ((time - lastTime) / 1000) / rotationDuration);
-                }
-                lastTime = time;
-                controls.update();
-                renderer.render(scene, camera);
-            }
-            requestAnimationFrame(animate);
+            requestRender();   // premiere image
 
             return "";
         }
