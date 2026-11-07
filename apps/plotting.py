@@ -4132,6 +4132,7 @@ def apply_socca(pdf):
     print(outdic.keys())
     print(outdic)
     return outdic
+
 @app.callback(
     [
         Output("socca-params", "data"),
@@ -4139,44 +4140,122 @@ def apply_socca(pdf):
         Output("socca-lightcurve-results", "children"),
     ],
     Input("switch-lightcurve-func", "value"),
-    State("object-sso", "data"),
+    Input("object-sso", "data"),
     prevent_initial_call=True,
 )
 def compute_socca_from_lightcurve(model, object_sso):
-    """Compute SOCCA parameters from the Lightcurve tab"""
+    """Compute the selected model from the Lightcurve tab"""
     if not object_sso:
         raise PreventUpdate
-    if model != "SOCCA":
-        return no_update, "", None
 
     pdf = pd.read_json(io.StringIO(object_sso))
     if pdf.empty:
         raise PreventUpdate
 
     pdf["i:fid"] = pdf["i:fid"].astype(int)
-    ssoid = str(pdf["i:ssnamenr"].iloc[0])
-    outdic = get_socca_cache(ssoid)
-    if outdic is None:
-        outdic = apply_socca(pdf)
-        if not any(k.startswith("Failed") for k in outdic):
-            save_socca_cache(ssoid, outdic)
-
-    if any(k.startswith("Failed") for k in outdic):
-        return None, "SOCCA fit failed", dbc.Alert(
-            "The fitting procedure could not converge.", color="danger"
-        )
-
     filters = {1: "g", 2: "r", 3: "i"}
     filts = np.unique(pdf["i:fid"].to_numpy())
 
-    dd = {"": [filters[f] + " band" for f in filts]}
-    dd.update({param: [""] * len(filts) for param in SOCCA_PARAMS})
+    if model == "SOCCA":
+        params = SOCCA_PARAMS
+        ssoid = str(pdf["i:ssnamenr"].iloc[0])
+        outdic = get_socca_cache(ssoid)
+        if outdic is None:
+            outdic = apply_socca(pdf)
+            if not any(k.startswith("Failed") for k in outdic):
+                save_socca_cache(ssoid, outdic)
+
+        if any(k.startswith("Failed") for k in outdic):
+            return None, "SOCCA fit failed", dbc.Alert(
+                "The fitting procedure could not converge.", color="danger"
+            )
+        socca_out = outdic
+    else:
+        if "i:magpsf_red" not in pdf.columns:
+            return no_update, "", dbc.Alert("No ephemerides available.", color="danger")
+
+        if model == "HG1G2":
+            params = ["H", "G1", "G2"]
+            bounds = ([-3, 0, 0], [30, 1, 1])
+            p0 = [15.0, 0.15, 0.15]
+        elif model == "HG12":
+            params = ["H", "G12"]
+            bounds = ([-3, 0], [30, 1])
+            p0 = [15.0, 0.15]
+        elif model == "HG":
+            params = ["H", "G"]
+            bounds = ([-3, 0], [30, 1])
+            p0 = [15.0, 0.15]
+        elif model == "SHG1G2":
+            params = ["H", "G1", "G2", "R", "alpha0", "delta0"]
+            bounds = (
+                [-3, 0, 0, 3e-1, 0, -np.pi / 2],
+                [30, 1, 1, 1, 2 * np.pi, np.pi / 2],
+            )
+            p0 = [15.0, 0.15, 0.15, 0.8, np.pi, 0.0]
+        elif model == "sfHG1G2":
+            params = ["<H>", "G1", "G2"]
+            bounds = None
+            p0 = None
+        else:
+            raise PreventUpdate
+
+        outdic = estimate_sso_params(
+            magpsf_red=pdf["i:magpsf_red"].to_numpy(),
+            sigmapsf=pdf["i:sigmapsf"].to_numpy(),
+            phase=np.deg2rad(pdf["Phase"].to_numpy()),
+            filters=pdf["i:fid"].to_numpy(),
+            ra=np.deg2rad(pdf["i:ra"].to_numpy()),
+            dec=np.deg2rad(pdf["i:dec"].to_numpy()),
+            jd=pdf["i:jd"].to_numpy(),
+            p0=p0,
+            bounds=bounds,
+            model=model,
+            normalise_to_V=False,
+            ssnamenr=pdf["i:ssnamenr"].to_numpy()[0],
+        )
+        if outdic["fit"] != 0:
+            return no_update, "", dbc.Alert(
+                "The fitting procedure could not converge.", color="danger"
+            )
+        socca_out = no_update
+
+    if model == "sfHG1G2":
+        for f in filts:
+            outdic["<H>_{}".format(f)] = np.mean(
+                [
+                    outdic["H{}_{}".format(a, f)]
+                    for a in range(outdic["n_app_{}".format(f)])
+                ]
+            )
+            outdic["err_<H>_{}".format(f)] = np.sqrt(
+                np.sum(
+                    [
+                        outdic["err_H{}_{}".format(a, f)] ** 2
+                        for a in range(outdic["n_app_{}".format(f)])
+                    ]
+                )
+            )
+        dd = {
+            "": [
+                filters[f]
+                + " band ({} apparitions)".format(int(outdic["n_app_{}".format(f)]))
+                for f in filts
+            ]
+        }
+    else:
+        dd = {"": [filters[f] + " band" for f in filts]}
+
+    dd.update({param: [""] * len(filts) for param in params})
     df_table = pd.DataFrame(dd, index=[filters[f] for f in filts])
 
     for f in filts:
-        for param in SOCCA_PARAMS:
-            # filter dependent
-            suffix = f"_{f}" if param in ["H", "G1", "G2"] else ""
+        for param in params:
+            if param in ["<H>", "H", "G", "G1", "G2", "G12"]:
+                suffix = f"_{f}"
+            else:
+                suffix = ""
+
             loc = df_table[param].index == filters[f]
             df_table.loc[loc, param] = "{:.2f} &plusmn; {:.2f}".format(
                 outdic[param + suffix],
@@ -4207,14 +4286,12 @@ def compute_socca_from_lightcurve(model, object_sso):
         },
     )
 
-    return outdic, "", dmc.Paper([table])
+    return socca_out, "", dmc.Paper([table])
 
 @app.callback(
     Output("sso_phasecurve", "children"),
-    [
-        Input("switch-phase-curve-func", "value"),
-        Input("socca-params", "data"),
-    ],
+    Input("switch-phase-curve-func", "value"),
+    Input("socca-params", "data"),
     State("object-sso", "data"),
 )
 def draw_sso_phasecurve(switch_func: str, socca_params, object_sso) -> dict:
@@ -4412,7 +4489,7 @@ def draw_sso_phasecurve(switch_func: str, socca_params, object_sso) -> dict:
         popt = []
         for param in params:
             # filter dependent
-            if param in ["<H>", "H", "G1", "G2", "G12"]:
+            if param in ["<H>", "H", "G","G1", "G2", "G12"]:
                 suffix = f"_{f}"
             else:
                 suffix = ""
