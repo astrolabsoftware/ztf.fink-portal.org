@@ -79,6 +79,10 @@ from apps.utils import (
     apparent_flux_dr,
 )
 import apps.observability.utils as observability
+import json
+import time
+import tempfile
+from pathlib import Path
 
 COLORS_ZTF = ["#15284F", "#F5622E"]
 COLORS_ZTF_NEGATIVE = ["#274667", "#F57A2E"]
@@ -4016,6 +4020,42 @@ def sanitize_dict(outdic):
             outdic2.update({k: v})
     return outdic2
 
+SOCCA_CACHE_DIR = Path(tempfile.gettempdir()) / "fink_socca_cache"
+SOCCA_CACHE_DIR.mkdir(exist_ok=True)
+SOCCA_CACHE_TTL = 24 * 3600  # 24 h
+
+
+def get_socca_cache(ssoid):
+    f = SOCCA_CACHE_DIR / f"{ssoid}.json"
+    try:
+        if time.time() - f.stat().st_mtime < SOCCA_CACHE_TTL:
+            return json.loads(f.read_text())
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def clean_socca_cache():
+    """Supprime tous les fichiers du cache de plus de 24 h."""
+    now = time.time()
+    for f in SOCCA_CACHE_DIR.glob("*.json"):
+        try:
+            if now - f.stat().st_mtime > SOCCA_CACHE_TTL:
+                f.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def save_socca_cache(ssoid, outdic):
+    cache_file = SOCCA_CACHE_DIR / f"{ssoid}.json"
+
+    try:
+        with open(cache_file, "w") as f:
+            json.dump(outdic, f, default=float)
+    except (OSError, TypeError, ValueError) as e:
+        print(f"SOCCA cache: écriture impossible : {e}")
+
+    clean_socca_cache()  # nettoyage des vieux fichiers
 
 def apply_socca(pdf):
     """ """
@@ -4104,15 +4144,22 @@ def apply_socca(pdf):
 )
 def compute_socca_from_lightcurve(model, object_sso):
     """Compute SOCCA parameters from the Lightcurve tab"""
-    if model != "SOCCA" or not object_sso:
+    if not object_sso:
         raise PreventUpdate
+    if model != "SOCCA":
+        return no_update, "", None
 
     pdf = pd.read_json(io.StringIO(object_sso))
     if pdf.empty:
         raise PreventUpdate
 
     pdf["i:fid"] = pdf["i:fid"].astype(int)
-    outdic = apply_socca(pdf)
+    ssoid = str(pdf["i:ssnamenr"].iloc[0])
+    outdic = get_socca_cache(ssoid)
+    if outdic is None:
+        outdic = apply_socca(pdf)
+        if not any(k.startswith("Failed") for k in outdic):
+            save_socca_cache(ssoid, outdic)
 
     if any(k.startswith("Failed") for k in outdic):
         return None, "SOCCA fit failed", dbc.Alert(
