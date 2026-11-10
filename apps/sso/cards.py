@@ -283,6 +283,26 @@ curl -H "Content-Type: application/json" -X POST \\
             multiple=True,
             children=[
                 dmc.AccordionItem(
+                                    [
+                                        dmc.AccordionControl(
+                                            "3D Model",
+                                            icon=[
+                                                DashIconify(
+                                                    icon="tabler:box",
+                                                    color=dmc.DEFAULT_THEME["colors"]["blue"][6],
+                                                    width=20,
+                                                ),
+                                            ],
+                                        ),
+                                        dmc.AccordionPanel(
+                                            asteroid_3d(),
+                                            style={"width": "100%", "padding": "0"},
+                                        ),
+                                    ],
+                                    value="3d-model",
+                                    id="sso-3d-container",
+                                ),
+                dmc.AccordionItem(
                     [
                         dmc.AccordionControl(
                             "SsODNet - ssoCard",
@@ -309,26 +329,7 @@ curl -H "Content-Type: application/json" -X POST \\
                     ],
                     value="sso",   
                 ),
-                dmc.AccordionItem(
-                    [
-                        dmc.AccordionControl(
-                            "3D Model",
-                            icon=[
-                                DashIconify(
-                                    icon="tabler:box",
-                                    color=dmc.DEFAULT_THEME["colors"]["blue"][6],
-                                    width=20,
-                                ),
-                            ],
-                        ),
-                        dmc.AccordionPanel(
-                            asteroid_3d(),
-                            style={"width": "100%", "padding": "0"},
-                        ),
-                    ],
-                    value="3d-model",
-                    id="sso-3d-container",
-                ),
+                
 
                 *extra_items,
             ],

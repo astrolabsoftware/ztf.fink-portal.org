@@ -4026,6 +4026,7 @@ SOCCA_CACHE_TTL = 24 * 3600  # 24 h
 
 
 def get_socca_cache(ssoid):
+    """Récupère les résultats SOCCA en cache s'ils ont moins de 24 h."""
     f = SOCCA_CACHE_DIR / f"{ssoid}.json"
     try:
         if time.time() - f.stat().st_mtime < SOCCA_CACHE_TTL:
@@ -4047,8 +4048,8 @@ def clean_socca_cache():
 
 
 def save_socca_cache(ssoid, outdic):
+    """Enregistre les résultats SOCCA dans un fichier JSON temporaire."""
     cache_file = SOCCA_CACHE_DIR / f"{ssoid}.json"
-
     try:
         with open(cache_file, "w") as f:
             json.dump(outdic, f, default=float)
@@ -4162,17 +4163,14 @@ def compute_socca_from_lightcurve(model, object_sso):
         outdic = get_socca_cache(ssoid)
         if outdic is None:
             outdic = apply_socca(pdf)
-            if not any(k.startswith("Failed") for k in outdic):
-                save_socca_cache(ssoid, outdic)
-
-        if any(k.startswith("Failed") for k in outdic):
-            return None, "SOCCA fit failed", dbc.Alert(
-                "The fitting procedure could not converge.", color="danger"
-            )
+            if any(k.startswith("Failed") for k in outdic):
+                return None, "SOCCA fit failed", dbc.Alert(
+                    "The fitting procedure could not converge.",
+                    color="danger"
+                )
+            save_socca_cache(ssoid, outdic)
         socca_out = outdic
     else:
-        if "i:magpsf_red" not in pdf.columns:
-            return no_update, "", dbc.Alert("No ephemerides available.", color="danger")
 
         if model == "HG1G2":
             params = ["H", "G1", "G2"]

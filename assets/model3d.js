@@ -126,6 +126,13 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             // Supprime l'ancien rendu
             if (window.model3dCleanup) window.model3dCleanup();
             container.innerHTML = "";
+            // Etat initial des boutons (draw peut etre relance par le Reset)
+            document.querySelectorAll(".model3d-view button").forEach(b => b.classList.remove("active"));
+            document.getElementById("model3d-play-button").title = "Play / Pause asteroid rotation";
+            document.getElementById("model3d-rotate-button").title = "Enable manual rotation";
+
+            const resetButton = document.getElementById("model3d-reset-button");
+            resetButton.disabled = true;   // grise tant que rien n'a change
             // Creation de la scene, de la camera et du rendu
             const w = container.clientWidth, h = container.clientHeight;
             const scene = new THREE.Scene();
@@ -333,6 +340,16 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             controls.enableRotate = controls.enableZoom = controls.enablePan = false;
             controls.addEventListener("change", requestRender);   // souris + inertie
 
+            // Reset : on relance simplement le dessin
+            resetButton.onclick = function () { window.dash_clientside.model3d.draw(p); };
+
+            // Le bouton s'active des qu'on clique sur un bouton ou qu'on bouge la souris
+            view.onclick = function (e) {
+                const b = e.target.closest("button");
+                if (b && b !== resetButton) resetButton.disabled = false;
+            };
+            controls.addEventListener("change", function () { resetButton.disabled = false; });
+
             const rotateButton = document.getElementById("model3d-rotate-button");
             rotateButton.onclick = function () {
                 controls.enableRotate = !controls.enableRotate;
@@ -350,11 +367,13 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             };
             // Afficher ou cacher les axes
             const axesButton = document.getElementById("model3d-axes-button");
+            axesButton.classList.add("active");   // les axes sont visibles au depart
             axesButton.onclick = function () {
                 axes.visible = !axes.visible;
                 axesButton.classList.toggle("active", axes.visible);
                 requestRender();
             };
+            
 
             // Libere les ressources de l'ancien rendu
             window.model3dCleanup = function () {
