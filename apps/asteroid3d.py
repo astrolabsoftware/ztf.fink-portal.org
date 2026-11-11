@@ -55,8 +55,8 @@ def asteroid_3d(): # cf. Sec. 2.1
                         className="model3d-fullscreen", title="Fullscreen"),
             html.Button(DashIconify(icon="tabler:arrows-maximize", width=19), id="model3d-fullscreen",
             className="model3d-fullscreen", title="Fullscreen"),
-            html.Button(DashIconify(icon="mdi:restore", width=19), id="model3d-reset-button",
-                        className="model3d-reset-button", title="Reset view"),
+        html.Button(DashIconify(icon="mdi:restore", width=19), id="model3d-reset-button",
+                    className="model3d-reset-button", title="Reset view"),
             html.Div([html.Button("+", id="model3d-zoom-in"), html.Button("−", id="model3d-zoom-out")],
                      className="model3d-zoom-controls"),
             html.Div("Camera FoV: 25°", className="model3d-fov"),
@@ -74,11 +74,10 @@ def asteroid_3d(): # cf. Sec. 2.1
 def unit(v):
     return v / np.linalg.norm(v)
 
-def get_ephemeris_position(ssoid, date):  # cf. Sec. 2.2
-    jd = Time(date, format="isot", scale="utc").jd
+def get_ephemeris_position(ssoid, jd):  # cf. Sec. 2.2
     eph = query_miriade(ident=str(ssoid), jd=[jd], observer="500", shift=0)  # observer 500 = géocentre
     if eph.empty:
-        raise ValueError(f"No Miriade ephemerides for {ssoid} at {date}")
+        raise ValueError(f"No Miriade ephemerides for {ssoid} at {jd}")
     # position de l'astéroïde (RA, DEC), du Soleil vu de l'astéroïde (RA_h, DEC_h) et distance à l'observateur
     ra, dec, ra_sun, dec_sun, d_obs = (float(eph.iloc[0][k]) for k in ("RA", "DEC", "RA_h", "DEC_h", "Dobs"))
     return ra, dec, jd, ra_sun, dec_sun, d_obs
@@ -156,8 +155,8 @@ def get_damit_major_axis_angle(ssoid):  # cf. Sec. 2.8
         print(f"DAMIT indisponible pour {ssoid} : {e}")
         return None
 
-def build_3d_orientation(ssoid, socca, date):  # cf. Sec. 2.9
-    ra, dec, jd, ra_sun, dec_sun, d_obs = get_ephemeris_position(ssoid, date)
+def build_3d_orientation(ssoid, socca, jd):  # cf. Sec. 2.9
+    ra, dec, jd, ra_sun, dec_sun, d_obs = get_ephemeris_position(ssoid, jd)
     t0, P_socca = 2459580.5, socca["period"]
 
     # Orientation SOCCA
@@ -217,7 +216,7 @@ def update_3d(socca, click_data, object_sso):
     if click_data and click_data.get("points"):
         jd = float(click_data["points"][0]["customdata"]) + 2400000.5  # point clique (MJD -> JD)
 
-    q_socca, q_periode, q_damit, sun_direction = build_3d_orientation(ssoid, socca, Time(jd, format="jd", scale="utc").isot)
+    q_socca, q_periode, q_damit, sun_direction = build_3d_orientation(ssoid, socca, jd)
     return {"quaternion": q_socca, "quaternion_periode": q_periode, "quaternion_damit": q_damit, "sun_direction": sun_direction,
             "a_b": socca["a_b"], "a_c": socca["a_c"], "period": socca["period"]}, jd
 

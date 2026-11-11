@@ -207,7 +207,6 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             const geometry = new THREE.SphereGeometry(1, 64, 32);
             geometry.rotateX(Math.PI / 2);
             geometry.scale(1, 1 / p.a_b, 1 / p.a_c);  // rapports d'axes SOCCA
-            geometry.computeVertexNormals();
 
             const grayMaterial = new THREE.MeshLambertMaterial({ color: 0x777777, side: THREE.DoubleSide });
             const object = new THREE.Mesh(geometry, grayMaterial);
@@ -373,7 +372,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
                 axesButton.classList.toggle("active", axes.visible);
                 requestRender();
             };
-            
+
 
             // Libere les ressources de l'ancien rendu
             window.model3dCleanup = function () {
