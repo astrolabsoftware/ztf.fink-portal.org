@@ -462,8 +462,8 @@ def tab5_content(object_soo):
     Input("sso-tabs", "value"),
 )
 def show_3d_only_for_lightcurve(selected_tab):
-    """Show the 3D model only on the Lightcurve tab"""
-    return {"display": "block" if selected_tab == "Lightcurve" else "none"}
+    """Show the 3D model only on the Lightcurve and Phasecurve tabs"""
+    return {"display": "block" if selected_tab in ("Lightcurve", "Phase curve") else "none"}
 
 
 @app.callback(

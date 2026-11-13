@@ -4,7 +4,7 @@ import pandas as pd
 import requests
 from astropy.time import Time
 from scipy.spatial.transform import Rotation
-from dash import html, dcc, Input, Output, State
+from dash import html, dcc, Input, Output, State, ctx
 from dash.exceptions import PreventUpdate
 from dash_iconify import DashIconify
 from fink_utils.sso.spins import cos_aspect_angle, rotation_phase, subobserver_longitude
@@ -26,7 +26,7 @@ def asteroid_3d(): # cf. Sec. 2.1
         html.Div([
             DashIconify(icon="tabler:alert-circle", width=20, color="#d9534f"),
             html.Span("The latest observation is selected by default. "
-                      "Click on a point in the lightcurve to select another date."),
+                      "Click on a point in the lightcurve or in the phase curve residuals to select another date."),
         ], className="model3d-instruction"),
 
         # Modele 3D + elements superposes
@@ -202,19 +202,24 @@ def build_3d_orientation(ssoid, socca, jd):  # cf. Sec. 2.9
     Output("model-3d-jd", "data"),
     Input("socca-params", "data"),
     Input("sso-lightcurve", "clickData"),
+    Input("sso-phasecurve-residual", "clickData"),
     State("object-sso", "data"),
     prevent_initial_call=True,
 )
-def update_3d(socca, click_data, object_sso):
+def update_3d(socca, lc_click, pc_click,object_sso):
     if not socca or not object_sso:
         raise PreventUpdate
 
     pdf = pd.read_json(io.StringIO(object_sso))
     ssoid = str(pdf["i:ssnamenr"].iloc[0])  # Recuperation de l'identifiant de l'asteroide
 
+    # Clic du graphe qui a déclenché le callback.
+    # .get() renvoie None si le déclencheur est "socca-params" (pas de clic).
+    click = {"sso-lightcurve": lc_click, "sso-phasecurve-residual": pc_click}.get(ctx.triggered_id)
+
     jd = float(pdf["i:jd"].max())  # Derniere observation par defaut
-    if click_data and click_data.get("points"):
-        jd = float(click_data["points"][0]["customdata"]) + 2400000.5  # point clique (MJD -> JD)
+    if click and click.get("points"):
+        jd = float(click["points"][0]["customdata"]) + 2400000.5  # point clique (MJD -> JD)
 
     q_socca, q_periode, q_damit, sun_direction = build_3d_orientation(ssoid, socca, jd)
     return {"quaternion": q_socca, "quaternion_periode": q_periode, "quaternion_damit": q_damit, "sun_direction": sun_direction,

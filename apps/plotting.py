@@ -4556,13 +4556,15 @@ def draw_sso_phasecurve(switch_func: str, socca_params, object_sso) -> dict:
                     "type": "data",
                     "array": pdf.loc[cond, "i:sigmapsf"].to_numpy(),
                     "visible": True,
-                    "width": 0,
+                    "width": 0, 
                     "opacity": 0.5,
                     "color": COLORS_ZTF[i],
                 },
                 "mode": "markers",
                 "name": f"Residual {filters[f]}",
                 "showlegend": False,
+                "customdata": (pdf.loc[cond, "i:jd"] - 2400000.5).to_numpy(),   # MJD de chaque point
+                "hovertemplate": "Residual: %{y:.2f}<br>Phase: %{x:.2f}<br>mjd: %{customdata}<extra></extra>",
                 "marker": {
                     "color": COLORS_ZTF[i],
                 },
@@ -4633,6 +4635,7 @@ def draw_sso_phasecurve(switch_func: str, socca_params, object_sso) -> dict:
     )
 
     graph2 = dcc.Graph(
+        id="sso-phasecurve-residual",
         figure=residual_figure,
         style={
             "width": "100%",
