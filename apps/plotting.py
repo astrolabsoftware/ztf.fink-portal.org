@@ -4020,10 +4020,87 @@ def sanitize_dict(outdic):
             outdic2.update({k: v})
     return outdic2
 
+
+filters = {1: "g", 2: "r", 3: "i"}
+
+models = {
+    "HG1G2": dict(params=["H", "G1", "G2"], bounds=([-3, 0, 0], [30, 1, 1]), p0=[15.0, 0.15, 0.15]),
+    "HG12": dict(params=["H", "G12"], bounds=([-3, 0], [30, 1]), p0=[15.0, 0.15]),
+    "HG": dict(params=["H", "G"], bounds=([-3, 0], [30, 1]), p0=[15.0, 0.15]),
+    "SHG1G2": dict(
+        params=["H", "G1", "G2", "R", "alpha0", "delta0"],
+        bounds=([-3, 0, 0, 3e-1, 0, -np.pi / 2], [30, 1, 1, 1, 2 * np.pi, np.pi / 2]),
+        p0=[15.0, 0.15, 0.15, 0.8, np.pi, 0.0],
+    ),
+    "sfHG1G2": dict(params=["<H>", "G1", "G2"], bounds=None, p0=None),
+    "SOCCA": dict(params=SOCCA_PARAMS, bounds=None, p0=None),
+}
+
+
+def fit_model(pdf, model):
+    """Fit hors SOCCA. Retourne None si pas de convergence."""
+    outdic = estimate_sso_params(
+        magpsf_red=pdf["i:magpsf_red"].to_numpy(),
+        sigmapsf=pdf["i:sigmapsf"].to_numpy(),
+        phase=np.deg2rad(pdf["Phase"].to_numpy()),
+        filters=pdf["i:fid"].to_numpy(),
+        ra=np.deg2rad(pdf["i:ra"].to_numpy()),
+        dec=np.deg2rad(pdf["i:dec"].to_numpy()),
+        jd=pdf["i:jd"].to_numpy(),
+        p0=models[model]["p0"],
+        bounds=models[model]["bounds"],
+        model=model,
+        normalise_to_V=False,
+        ssnamenr=pdf["i:ssnamenr"].to_numpy()[0],
+    )
+    if outdic["fit"] != 0:
+        return None
+
+    if model == "sfHG1G2":
+        for f in np.unique(pdf["i:fid"].to_numpy()):
+            napp = range(outdic["n_app_{}".format(f)])
+            outdic["<H>_{}".format(f)] = np.mean([outdic["H{}_{}".format(a, f)] for a in napp])
+            outdic["err_<H>_{}".format(f)] = np.sqrt(
+                np.sum([outdic["err_H{}_{}".format(a, f)] ** 2 for a in napp])
+            )
+    return outdic
+
+
+def make_table(outdic, model, filts, table_id):
+    params = models[model]["params"]
+
+    if model == "sfHG1G2":
+        dd = {"": [filters[f] + " band ({} apparitions)".format(int(outdic["n_app_{}".format(f)])) for f in filts]}
+    else:
+        dd = {"": [filters[f] + " band" for f in filts]}
+    dd.update({param: [""] * len(filts) for param in params})
+    df_table = pd.DataFrame(dd, index=[filters[f] for f in filts])
+
+    for f in filts:
+        for param in params:
+            suffix = f"_{f}" if param in ["<H>", "H", "G", "G1", "G2", "G12"] else ""
+            loc = df_table[param].index == filters[f]
+            df_table.loc[loc, param] = "{:.2f} &plusmn; {:.2f}".format(
+                outdic[param + suffix], outdic["err_" + param + suffix]
+            )
+
+    columns = [{"id": c, "name": c, "type": "text", "presentation": "markdown"} for c in df_table.columns]
+
+    return dash_table.DataTable(
+        id=table_id,
+        columns=columns,
+        data=df_table.to_dict("records"),
+        style_as_list_view=True,
+        style_data={"backgroundColor": "rgb(248, 248, 248, .7)"},
+        style_table={"width": "100%", "maxWidth": "100%", "overflowX": "auto"},
+        style_cell={"padding": "5px", "textAlign": "left", "border": "0.5px solid grey"},
+        style_filter={"backgroundColor": "rgb(238, 238, 238, .7)"},
+        style_header={"backgroundColor": "rgb(230, 230, 230)", "fontWeight": "bold"},
+    )
+
 SOCCA_CACHE_DIR = Path(tempfile.gettempdir()) / "fink_socca_cache"
 SOCCA_CACHE_DIR.mkdir(exist_ok=True)
 SOCCA_CACHE_TTL = 24 * 3600  # 24 h
-
 
 def get_socca_cache(ssoid):
     """Récupère les résultats SOCCA en cache s'ils ont moins de 24 h."""
@@ -4150,140 +4227,29 @@ def compute_socca_from_lightcurve(model, object_sso):
         raise PreventUpdate
 
     pdf = pd.read_json(io.StringIO(object_sso))
-    if pdf.empty:
+    if pdf.empty or model not in models:
         raise PreventUpdate
 
     pdf["i:fid"] = pdf["i:fid"].astype(int)
-    filters = {1: "g", 2: "r", 3: "i"}
     filts = np.unique(pdf["i:fid"].to_numpy())
+    alert = dbc.Alert("The fitting procedure could not converge.", color="danger")
 
     if model == "SOCCA":
-        params = SOCCA_PARAMS
         ssoid = str(pdf["i:ssnamenr"].iloc[0])
         outdic = get_socca_cache(ssoid)
         if outdic is None:
             outdic = apply_socca(pdf)
             if any(k.startswith("Failed") for k in outdic):
-                return None, "SOCCA fit failed", dbc.Alert(
-                    "The fitting procedure could not converge.",
-                    color="danger"
-                )
+                return None, "SOCCA fit failed", alert
             save_socca_cache(ssoid, outdic)
         socca_out = outdic
     else:
-
-        if model == "HG1G2":
-            params = ["H", "G1", "G2"]
-            bounds = ([-3, 0, 0], [30, 1, 1])
-            p0 = [15.0, 0.15, 0.15]
-        elif model == "HG12":
-            params = ["H", "G12"]
-            bounds = ([-3, 0], [30, 1])
-            p0 = [15.0, 0.15]
-        elif model == "HG":
-            params = ["H", "G"]
-            bounds = ([-3, 0], [30, 1])
-            p0 = [15.0, 0.15]
-        elif model == "SHG1G2":
-            params = ["H", "G1", "G2", "R", "alpha0", "delta0"]
-            bounds = (
-                [-3, 0, 0, 3e-1, 0, -np.pi / 2],
-                [30, 1, 1, 1, 2 * np.pi, np.pi / 2],
-            )
-            p0 = [15.0, 0.15, 0.15, 0.8, np.pi, 0.0]
-        elif model == "sfHG1G2":
-            params = ["<H>", "G1", "G2"]
-            bounds = None
-            p0 = None
-        else:
-            raise PreventUpdate
-
-        outdic = estimate_sso_params(
-            magpsf_red=pdf["i:magpsf_red"].to_numpy(),
-            sigmapsf=pdf["i:sigmapsf"].to_numpy(),
-            phase=np.deg2rad(pdf["Phase"].to_numpy()),
-            filters=pdf["i:fid"].to_numpy(),
-            ra=np.deg2rad(pdf["i:ra"].to_numpy()),
-            dec=np.deg2rad(pdf["i:dec"].to_numpy()),
-            jd=pdf["i:jd"].to_numpy(),
-            p0=p0,
-            bounds=bounds,
-            model=model,
-            normalise_to_V=False,
-            ssnamenr=pdf["i:ssnamenr"].to_numpy()[0],
-        )
-        if outdic["fit"] != 0:
-            return no_update, "", dbc.Alert(
-                "The fitting procedure could not converge.", color="danger"
-            )
+        outdic = fit_model(pdf, model)
+        if outdic is None:
+            return no_update, "", alert
         socca_out = no_update
 
-    if model == "sfHG1G2":
-        for f in filts:
-            outdic["<H>_{}".format(f)] = np.mean(
-                [
-                    outdic["H{}_{}".format(a, f)]
-                    for a in range(outdic["n_app_{}".format(f)])
-                ]
-            )
-            outdic["err_<H>_{}".format(f)] = np.sqrt(
-                np.sum(
-                    [
-                        outdic["err_H{}_{}".format(a, f)] ** 2
-                        for a in range(outdic["n_app_{}".format(f)])
-                    ]
-                )
-            )
-        dd = {
-            "": [
-                filters[f]
-                + " band ({} apparitions)".format(int(outdic["n_app_{}".format(f)]))
-                for f in filts
-            ]
-        }
-    else:
-        dd = {"": [filters[f] + " band" for f in filts]}
-
-    dd.update({param: [""] * len(filts) for param in params})
-    df_table = pd.DataFrame(dd, index=[filters[f] for f in filts])
-
-    for f in filts:
-        for param in params:
-            if param in ["<H>", "H", "G", "G1", "G2", "G12"]:
-                suffix = f"_{f}"
-            else:
-                suffix = ""
-
-            loc = df_table[param].index == filters[f]
-            df_table.loc[loc, param] = "{:.2f} &plusmn; {:.2f}".format(
-                outdic[param + suffix],
-                outdic["err_" + param + suffix],
-            )
-
-    columns = [
-        {"id": c, "name": c, "type": "text", "presentation": "markdown"}
-        for c in df_table.columns
-    ]
-
-    table = dash_table.DataTable(
-        id="lightcurve_table",
-        columns=columns,
-        data=df_table.to_dict("records"),
-        style_as_list_view=True,
-        style_data={"backgroundColor": "rgb(248, 248, 248, .7)"},
-        style_table={"width": "100%", "maxWidth": "100%", "overflowX": "auto"},
-        style_cell={
-            "padding": "5px",
-            "textAlign": "left",
-            "border": "0.5px solid grey",
-        },
-        style_filter={"backgroundColor": "rgb(238, 238, 238, .7)"},
-        style_header={
-            "backgroundColor": "rgb(230, 230, 230)",
-            "fontWeight": "bold",
-        },
-    )
-
+    table = make_table(outdic, model, filts, "lightcurve_table")
     return socca_out, "", dmc.Paper([table])
 
 @app.callback(
@@ -4292,7 +4258,7 @@ def compute_socca_from_lightcurve(model, object_sso):
     Input("socca-params", "data"),
     State("object-sso", "data"),
 )
-def draw_sso_phasecurve(switch_func: str, socca_params, object_sso) -> dict:
+def draw_sso_phasecurve(model: str, socca_params, object_sso) -> dict:
     """Draw SSO object phase curve"""
     pdf = pd.read_json(io.StringIO(object_sso))
     if pdf.empty:
@@ -4303,13 +4269,9 @@ def draw_sso_phasecurve(switch_func: str, socca_params, object_sso) -> dict:
         return html.Div([html.Br(), dbc.Alert(msg, color="danger")])
 
     if "i:magpsf_red" not in pdf.columns:
-        return (
-            dbc.Alert(
-                "No ephemerides available for {}".format(
-                    pdf["i:ssnamenr"].to_numpy()[0]
-                ),
-                color="danger",
-            ),
+        return dbc.Alert(
+            "No ephemerides available for {}".format(pdf["i:ssnamenr"].to_numpy()[0]),
+            color="danger",
         )
 
     pdf = pdf.sort_values("Phase")
@@ -4317,8 +4279,6 @@ def draw_sso_phasecurve(switch_func: str, socca_params, object_sso) -> dict:
     # type conversion
     pdf["i:fid"] = pdf["i:fid"].astype(int)
 
-    # Disctionary for filters
-    filters = {1: "g", 2: "r", 3: "i"}
     filts = np.unique(pdf["i:fid"].to_numpy())
 
     figs = []
@@ -4336,24 +4296,9 @@ def draw_sso_phasecurve(switch_func: str, socca_params, object_sso) -> dict:
 
     phase = np.deg2rad(pdf["Phase"].to_numpy())
 
-    if switch_func == "SOCCA":
+    # fitfunc et phase_funcs (params, bounds, p0 sont dans `models`)
+    if model == "SOCCA":
         fitfunc = func_socca
-
-        params = [
-            "H",
-            "G1",
-            "G2",
-            "alpha0",
-            "delta0",
-            "period",
-            "a_b",
-            "a_c",
-            "phi0",
-        ]
-
-        bounds = None
-        p0 = None
-
         phase_funcs = [
             HG1G2._phi1(phase),
             HG1G2._phi2(phase),
@@ -4362,51 +4307,17 @@ def draw_sso_phasecurve(switch_func: str, socca_params, object_sso) -> dict:
             np.deg2rad(pdf["i:dec"].to_numpy()),
             pdf["i:jd"].to_numpy(),
         ]
-
-        if not socca_params:
-            return dbc.Alert(
-                "Please compute SOCCA from the Lightcurve tab first.",
-                color="warning",
-            )
-
-        outdic = socca_params
-    
-
-    elif switch_func == "HG1G2":
+    elif model == "HG1G2":
         fitfunc = func_hg1g2
-        params = ["H", "G1", "G2"]
-        bounds = (
-            [-3, 0, 0],
-            [30, 1, 1],
-        )
-        p0 = [15.0, 0.15, 0.15]
         phase_funcs = [HG1G2._phi1(phase), HG1G2._phi2(phase), HG1G2._phi3(phase)]
-    elif switch_func == "HG12":
+    elif model == "HG12":
         fitfunc = func_hg12
-        params = ["H", "G12"]
-        bounds = (
-            [-3, 0],
-            [30, 1],
-        )
-        p0 = [15.0, 0.15]
         phase_funcs = [HG1G2._phi1(phase), HG1G2._phi2(phase), HG1G2._phi3(phase)]
-    elif switch_func == "HG":
+    elif model == "HG":
         fitfunc = func_hg
-        params = ["H", "G"]
-        bounds = (
-            [-3, 0],
-            [30, 1],
-        )
-        p0 = [15.0, 0.15]
         phase_funcs = [HG._hgphi(phase, 1), HG._hgphi(phase, 2)]
-    elif switch_func == "SHG1G2":
+    elif model == "SHG1G2":
         fitfunc = func_shg1g2
-        params = ["H", "G1", "G2", "R", "alpha0", "delta0"]
-        bounds = (
-            [-3, 0, 0, 3e-1, 0, -np.pi / 2],
-            [30, 1, 1, 1, 2 * np.pi, np.pi / 2],
-        )
-        p0 = [15.0, 0.15, 0.15, 0.8, np.pi, 0.0]
         phase_funcs = [
             HG1G2._phi1(phase),
             HG1G2._phi2(phase),
@@ -4414,89 +4325,43 @@ def draw_sso_phasecurve(switch_func: str, socca_params, object_sso) -> dict:
             np.deg2rad(pdf["i:ra"].to_numpy()),
             np.deg2rad(pdf["i:dec"].to_numpy()),
         ]
-    elif switch_func == "sfHG1G2":
-        fitfunc = func_hg1g2
-        # Use HG1G2 under the hood, with H = mean(H)
-        params = ["<H>", "G1", "G2"]
-        bounds = None
-        p0 = None
+    elif model == "sfHG1G2":
+        fitfunc = func_hg1g2  # HG1G2 avec H = mean(H)
         phase_funcs = [HG1G2._phi1(phase), HG1G2._phi2(phase), HG1G2._phi3(phase)]
+    else:
+        raise PreventUpdate
 
-    layout = deepcopy(layout_sso_phasecurve)
-    layout["title"]["text"] = "Reduced &#967;<sup>2</sup>: "
+    params = models[model]["params"]
 
-    # Multi-band fit
-    if switch_func != "SOCCA":
-        outdic = estimate_sso_params(
-            magpsf_red=pdf["i:magpsf_red"].to_numpy(),
-            sigmapsf=pdf["i:sigmapsf"].to_numpy(),
-            phase=np.deg2rad(pdf["Phase"].to_numpy()),
-            filters=pdf["i:fid"].to_numpy(),
-            ra=np.deg2rad(pdf["i:ra"].to_numpy()),
-            dec=np.deg2rad(pdf["i:dec"].to_numpy()),
-            jd=pdf["i:jd"].to_numpy(),
-            p0=p0,
-            bounds=bounds,
-            model=switch_func,
-            normalise_to_V=False,
-            ssnamenr=pdf["i:ssnamenr"].to_numpy()[0],
-        )
-        if outdic["fit"] != 0:
+    # Fit
+    if model == "SOCCA":
+        if not socca_params:
+            return dbc.Alert(
+                "Please compute SOCCA from the Lightcurve tab first.",
+                color="warning",
+            )
+        outdic = socca_params
+    else:
+        outdic = fit_model(pdf, model)
+        if outdic is None:
             return dbc.Alert(
                 "The fitting procedure could not converge.", color="danger"
             )
 
-    if switch_func == "sfHG1G2":
-        # H mean for each filter
-        for f in filts:
-            outdic["<H>_{}".format(f)] = np.mean(
-                [
-                    outdic["H{}_{}".format(a, f)]
-                    for a in range(outdic["n_app_{}".format(f)])
-                ]
-            )
+    table = make_table(outdic, model, filts, "phasecurve_table")
 
-            # assuming uncorrelated and random, which is obviously wrong
-            outdic["err_<H>_{}".format(f)] = np.sqrt(
-                np.sum(
-                    [
-                        outdic["err_H{}_{}".format(a, f)] ** 2
-                        for a in range(outdic["n_app_{}".format(f)])
-                    ]
-                )
-            )
-
-    if switch_func == "sfHG1G2":
-        dd = {
-            "": [
-                filters[f]
-                + " band ({} apparitions)".format(int(outdic["n_app_{}".format(f)]))
-                for f in filts
-            ]
-        }
-    else:
-        dd = {"": [filters[f] + " band" for f in filts]}
-    dd.update({i: [""] * len(filts) for i in params})
-    df_table = pd.DataFrame(
-        dd,
-        index=[filters[f] for f in filts],
-    )
+    layout = deepcopy(layout_sso_phasecurve)
+    layout["title"]["text"] = "Reduced &#967;<sup>2</sup>: "
 
     for i, f in enumerate(filts):
         cond = pdf["i:fid"] == f
         popt = []
         for param in params:
             # filter dependent
-            if param in ["<H>", "H", "G","G1", "G2", "G12"]:
+            if param in ["<H>", "H", "G", "G1", "G2", "G12"]:
                 suffix = f"_{f}"
             else:
                 suffix = ""
-
-            loc = df_table[param].index == filters[f]
-            df_table.loc[loc, param] = "{:.2f} &plusmn; {:.2f}".format(
-                outdic[param + suffix],
-                outdic["err_" + param + suffix],
-            )
 
             # rad2deg
             if param in ["alpha0", "delta0"]:
@@ -4556,22 +4421,20 @@ def draw_sso_phasecurve(switch_func: str, socca_params, object_sso) -> dict:
                     "type": "data",
                     "array": pdf.loc[cond, "i:sigmapsf"].to_numpy(),
                     "visible": True,
-                    "width": 0, 
+                    "width": 0,
                     "opacity": 0.5,
                     "color": COLORS_ZTF[i],
                 },
                 "mode": "markers",
                 "name": f"Residual {filters[f]}",
                 "showlegend": False,
-                "customdata": (pdf.loc[cond, "i:jd"] - 2400000.5).to_numpy(),   # MJD de chaque point
+                "customdata": (pdf.loc[cond, "i:jd"] - 2400000.5).to_numpy(),
                 "hovertemplate": "Residual: %{y:.2f}<br>Phase: %{x:.2f}<br>mjd: %{customdata}<extra></extra>",
-                "marker": {
-                    "color": COLORS_ZTF[i],
-                },
+                "marker": {"color": COLORS_ZTF[i]},
             },
         )
 
-    if switch_func == "sfHG1G2":
+    if model == "sfHG1G2":
         for f in filts:
             layout["title"]["text"] += "  {}:{:.2f}  ".format(
                 filters[f], outdic["chi2red_{}".format(f)]
@@ -4589,70 +4452,20 @@ def draw_sso_phasecurve(switch_func: str, socca_params, object_sso) -> dict:
         "layout": layout,
     }
 
-    columns = [
-        {
-            "id": c,
-            "name": c,
-            "type": "text",
-            # 'hideable': True,
-            "presentation": "markdown",
-        }
-        for c in df_table.columns
-    ]
-
-    table = dash_table.DataTable(
-        id="phasecurve_table",
-        columns=columns,
-        data=df_table.to_dict("records"),
-        style_as_list_view=True,
-        style_data={
-            "backgroundColor": "rgb(248, 248, 248, .7)",
-        },
-        style_table={
-            "width": "100%",
-            "maxWidth": "100%",
-            "overflowX": "auto",
-        },
-        style_cell={
-            "padding": "5px",
-            "textAlign": "left",
-            "border": "0.5px solid grey",
-        },
-        style_filter={"backgroundColor": "rgb(238, 238, 238, .7)"},
-        style_header={
-            "backgroundColor": "rgb(230, 230, 230)",
-            "fontWeight": "bold",
-        },
-    )
-
     graph1 = dcc.Graph(
         figure=figure,
-        style={
-            "width": "100%",
-            "height": "25pc",
-        },
+        style={"width": "100%", "height": "25pc"},
         config={"displayModeBar": False},
     )
 
     graph2 = dcc.Graph(
         id="sso-phasecurve-residual",
         figure=residual_figure,
-        style={
-            "width": "100%",
-            "height": "15pc",
-        },
+        style={"width": "100%", "height": "15pc"},
         config={"displayModeBar": False},
     )
-    card = dmc.Paper(
-        [
-            graph1,
-            html.Br(),
-            graph2,
-            html.Br(),
-            table,
-        ],
-    )
-    return card
+
+    return dmc.Paper([graph1, html.Br(), graph2, html.Br(), table])
 
 
 def draw_tracklet_lightcurve(pdf) -> dict:
